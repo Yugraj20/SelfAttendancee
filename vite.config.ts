@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 // When built by the GitHub Actions workflow, assets are served from
 // https://<user>.github.io/<repo>/ — adjust the repo name below if you
 // rename the repository, or set it to '/' for a custom domain / user site.
-const repoName = 'self-attendance';
+const repoName = 'SelfAttendancee'; // <-- Updated this line to match your exact repo name
 
 export default defineConfig({
   base: process.env.GITHUB_ACTIONS ? `/${repoName}/` : '/',
