@@ -1,6 +1,6 @@
 # Self Attendance
 
-A production-ready, local-first attendance tracker built with React, TypeScript, Vite, Firebase Authentication, IndexedDB, Gemini and a PWA shell. Attendance data is never stored in Firebase: Google sign-in only creates a reliable account boundary on the current device.
+A production-ready, local-first attendance tracker built with React, TypeScript, Vite, Firebase Authentication, Firestore, IndexedDB, Gemini and a PWA shell. Every screen reads and writes IndexedDB directly, so the app is instant and fully usable offline. Signing in with Google additionally mirrors your timetable, attendance, subjects and settings to a private Firestore document (`users/{uid}`), so the same data follows you to another device — see [Cloud sync (Firestore)](#cloud-sync-firestore) below.
 
 ## Run locally
 
@@ -18,7 +18,35 @@ Run `npm run build` before deploying. It performs the TypeScript check and creat
 2. In **Authentication → Sign-in method**, enable Google and provide support email details.
 3. Copy the web app configuration to `.env.local` as `VITE_FIREBASE_*` variables.
 4. In **Authentication → Settings → Authorized domains**, add your production GitHub Pages host, for example `your-name.github.io`. Firebase's web configuration is public client configuration, but restrict its API key and only authorize your own domains.
-5. No Firestore, Realtime Database, Firebase Storage, Admin SDK, service account, or Firebase attendance-data rules are required for this application.
+5. Realtime Database, Firebase Storage, and any Admin SDK/service account are not required. **Firestore is required** for cross-device sync — see the next section.
+
+## Cloud sync (Firestore)
+
+Sign-in does two things: it separates each Google account's data locally (IndexedDB stores are keyed by `uid`, so one device can hold several accounts' data side by side), and it now also syncs that data to Firestore so it's available on other devices.
+
+**How it works**
+
+- Local IndexedDB is always the source of truth for the UI — reads and writes never wait on the network.
+- On sign-in, the app checks `users/{uid}` in Firestore: if it exists, that cloud copy replaces the local copy for this `uid` on this device; if it doesn't (first sign-in from any device), the local copy is pushed up to seed it.
+- After every local change (marking attendance, editing a subject or timetable entry, importing, restoring a backup, changing settings), the updated data is pushed to Firestore in the background, debounced by ~1.2s and tagged with an `updatedAt` timestamp. Network or offline errors never block the UI — the header/settings sync badge reflects the current state (`Syncing…`, `Synced`, `Offline`, or `Sync paused`).
+- "Clear local data" in Settings only clears this device's IndexedDB; it does not touch the Firestore copy, so signing out and back in (or opening the app elsewhere) restores it.
+
+**Setup**
+
+1. In the Firebase console, open **Firestore Database** and create a database (production mode).
+2. Set security rules so each user can only read/write their own document:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+   These are also saved in [`firestore.rules`](./firestore.rules) — deploy with `firebase deploy --only firestore:rules` if you use the Firebase CLI, or paste them into the console's Rules tab.
+3. No extra `VITE_FIREBASE_*` variables are needed beyond what Google sign-in already uses.
 
 ## Gemini timetable import
 
