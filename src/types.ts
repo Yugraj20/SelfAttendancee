@@ -6,4 +6,5 @@ export interface TimetableEntry { id: string; uid: string; day: string; subjectI
 export interface Settings { uid: string; defaultTarget: number; theme: Theme; onboardingComplete: boolean }
 export interface UserRecord { uid: string; email: string; name: string; photoURL: string; updatedAt: string }
 export interface BackupPayload { version: 1; createdAt: string; account: { email: string; uid: string }; subjects: Subject[]; attendance: Attendance[]; timetable: TimetableEntry[]; settings: Settings }
+export type DetectedEntry = Partial<TimetableEntry> & { subjectCode?: string };
 export const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
