@@ -1,4 +1,46 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { DetectedEntry } from './types';
+import type { DetectedAttendance, DetectedEntry, ParsedAttendance } from './types';
 const prompt = `Analyze this timetable only. Extract every instructional class as strict JSON, no markdown: {"timetable":[{"day":"Monday","startTime":"09:00","endTime":"10:00","subject":"","subjectCode":"","teacher":"","room":"","type":"Lecture","notes":""}]}. Days must be English weekday names. Use 24-hour HH:MM. Do not invent anything; use empty strings when unreadable. Include labs separately. Ignore breaks unless useful in notes.`;
 export async function extractTimetable(file: File): Promise<DetectedEntry[]> { const key = import.meta.env.VITE_GEMINI_API_KEY; if (!key) throw new Error('AI import is not configured. Add a restricted Gemini key or connect a secure proxy.'); if (file.size > 15 * 1024 * 1024) throw new Error('File is too large. Please use a file under 15 MB.'); const allowed = ['application/pdf','image/png','image/jpeg','image/webp']; if (!allowed.includes(file.type)) throw new Error('Use a PDF, PNG, JPG, JPEG, or WEBP timetable.'); const base64 = await new Promise<string>((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve((r.result as string).split(',')[1]); r.onerror=()=>reject(new Error('Could not read file.')); r.readAsDataURL(file); }); try { const model = new GoogleGenerativeAI(key).getGenerativeModel({ model: 'gemini-3.5-flash-lite', generationConfig: { responseMimeType: 'application/json' } }); const result = await model.generateContent([{ text: prompt }, { inlineData: { data: base64, mimeType: file.type } }]); const raw = result.response.text(); const data = JSON.parse(raw); if (!Array.isArray(data.timetable) || !data.timetable.length) throw new Error('No timetable entries were detected. Try a clearer file.'); return data.timetable; } catch (e) { if (e instanceof Error && e.message.includes('No timetable')) throw e; throw new Error('We could not confidently read this timetable. Check your connection, key restrictions, or upload a clearer file.'); } }
+
+// --- Attendance import ------------------------------------------------------------------------
+// The shape of an attendance dump is deliberately NOT encoded here. Gemini is given the raw text
+// and asked to work out the structure itself, so tuples, CSV, tables, markdown or prose all work.
+// Everything below only validates the JSON envelope that comes back.
+const ATTENDANCE_CAP = 180000;
+const attendancePrompt = `You are reading the raw text of a file a student exported or copied out of some attendance system. Extract every attendance record it contains.
+Reply with strict JSON and nothing else — no markdown, no commentary:
+{"records":[{"subject":"","subjectCode":"","date":"YYYY-MM-DD","status":"present","confidence":"high","note":"","source":""}],"warnings":[]}
+Rules:
+- The layout is unknown to you. It may be tuples, tables, CSV, bullet lists, key/value pairs, prose, or several of those mixed together, with any spacing, ordering or capitalisation. Work the structure out from the text itself.
+- A heading, table name, section label or column header that names a course applies to every record beneath it until the next such heading. Put a spelled-out course name in "subject" and a code or abbreviation in "subjectCode". Either may be empty, but never both when the file makes the course knowable.
+- "date" must be ISO YYYY-MM-DD. Join a month/year label to a day number when they are split across fields. Infer a missing year only from context that is actually present in the file; otherwise leave "date" empty and set "confidence":"low".
+- "status" must be exactly "present", "absent" or "unknown". Map synonyms and marks: p, P, y, yes, present, attended, tick or check marks -> "present"; a, A, n, no, absent, missed, cut -> "absent". Leave, holiday, cancelled, medical, duty, blank or anything you are unsure of -> "unknown", with a short "note" saying what the source actually said.
+- "confidence" is "high" only when subject, date and status are all unambiguous. Otherwise "low".
+- "source" is the original line or fragment the record came from, trimmed to 80 characters. It is shown to the user so they can check your work.
+- Never invent, extrapolate or fill in records, dates or subjects. If a row is unreadable, return it with "confidence":"low" instead of dropping it or guessing.
+- Do not deduplicate or reorder. Return every record in the order it appears.
+- "warnings": short plain-English notes about anything in the file you could not interpret. Use an empty array when there is nothing to report.`;
+export async function extractAttendance(file: File): Promise<ParsedAttendance> {
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!key) throw new Error('AI import is not configured. Add a restricted Gemini key or connect a secure proxy.');
+  const isTxt = file.name.toLowerCase().endsWith('.txt') && (!file.type || file.type === 'text/plain');
+  if (!isTxt) throw new Error('Attendance import needs a plain .txt file. Export or paste your attendance into a text file and try again.');
+  if (file.size > 2 * 1024 * 1024) throw new Error('That file is too large. Please use a .txt file under 2 MB.');
+  let text: string;
+  try { text = await file.text() } catch { throw new Error('Could not read that file. Try re-saving it as plain text.') }
+  if (!text.trim()) throw new Error('That file is empty. Add your attendance data to it and upload again.');
+  const truncated = text.length > ATTENDANCE_CAP;
+  if (truncated) text = text.slice(0, ATTENDANCE_CAP);
+  let data: { records?: unknown; warnings?: unknown };
+  try {
+    const model = new GoogleGenerativeAI(key).getGenerativeModel({ model: 'gemini-3.5-flash-lite', generationConfig: { responseMimeType: 'application/json' } });
+    const result = await model.generateContent([{ text: attendancePrompt }, { text: `--- BEGIN FILE ---\n${text}\n--- END FILE ---` }]);
+    data = JSON.parse(result.response.text());
+  } catch { throw new Error('We could not reach Gemini or could not read its reply. Check your connection and key restrictions, then try the analysis again.') }
+  if (!Array.isArray(data.records)) throw new Error('Gemini could not find any attendance records in that file. Check that the text actually contains attendance data, then retry.');
+  const records = (data.records as DetectedAttendance[]).filter(r => r && typeof r === 'object');
+  if (!records.length) throw new Error('Gemini could not find any attendance records in that file. Check that the text actually contains attendance data, then retry.');
+  const warnings = Array.isArray(data.warnings) ? (data.warnings as unknown[]).filter((w): w is string => typeof w === 'string' && w.trim().length > 0).slice(0, 8) : [];
+  return { records, warnings, truncated };
+}

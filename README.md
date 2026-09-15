@@ -7,7 +7,7 @@ A production-ready, local-first attendance tracker built with React, TypeScript,
 1. Install Node.js 20+ and run `npm install`.
 2. Copy `.env.example` to `.env.local`.
 3. Fill in the Firebase web configuration values. The values are intentionally not committed.
-4. Optionally add a Gemini key to `VITE_GEMINI_API_KEY` for timetable scanning.
+4. Optionally add a Gemini key to `VITE_GEMINI_API_KEY` for timetable scanning and attendance import.
 5. Run `npm run dev`.
 
 Run `npm run build` before deploying. It performs the TypeScript check and creates `dist/`.
@@ -51,6 +51,18 @@ Sign-in does two things: it separates each Google account's data locally (Indexe
 ## Gemini timetable import
 
 The app uses the official `@google/generative-ai` SDK and accepts PDF, PNG, JPG/JPEG, and WEBP files (up to 15 MB). It asks Gemini for strict timetable JSON, presents every entry for editing, and saves only after confirmation.
+
+## Gemini attendance import
+
+Reachable from the Attendance page and from Settings → Your data. It takes a plain `.txt` file (up to 2 MB) of attendance copied out of some other system. No layout is assumed: the prompt tells Gemini the structure is unknown and asks it to work out the shape of the file itself, so tuples, CSV, tables, markdown or prose all work. Gemini returns the subject, an ISO date, a `present`/`absent`/`unknown` status, a confidence flag and the source line for each record.
+
+The flow is Upload → Analysing → Review → Importing → Complete, and nothing is written until you confirm:
+
+- Detected subjects are matched against your existing ones by name, code, acronym (`COA` finds "Computer Organisation and Architecture"), then containment/word overlap. Anything unmatched is shown as such and defaults to creating a new subject — never silently dropped. Each subject can be re-pointed, created, or skipped from the review screen.
+- Rows with a missing or impossible date, an unreadable status, or low model confidence are flagged as needing review and excluded until you fix them inline.
+- Days already recorded with the same status are skipped as duplicates. Days recorded with a *different* status are shown as clashes and left alone unless you explicitly choose to let the file win, in which case the existing record is updated in place rather than duplicated.
+- Imported marks use `sessionId: 'manual'`, so they appear on the Attendance page exactly as a tap would and count toward every percentage.
+- The write happens in one IndexedDB transaction over `subjects` and `attendance` only — the timetable is never opened, and a failure rolls the whole import back.
 
 For a static GitHub Pages deployment, any `VITE_GEMINI_API_KEY` is inherently visible in the browser bundle. Prefer a small authenticated serverless proxy for production if possible. If you deliberately use a browser key, restrict it in Google Cloud by HTTP referrer (your GitHub Pages domain) and Gemini API, set quotas, and rotate/revoke it when needed. Never put the key in source, UI, backup files, or logs.
 
