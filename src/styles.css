@@ -1,8 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
 :root{
   font-family:'DM Sans',system-ui,sans-serif;
-  color:#202033;
-  background:#f6f6fb;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
   --bg:#f6f6fb;
@@ -12,7 +10,10 @@
   --line:#e9e9f1;
   --brand:#6959f5;
   --soft:#f0efff;
-  --shadow:0 14px 45px #4b478414
+  --shadow:0 14px 45px #4b478414;
+  color:var(--ink);
+  background:var(--bg);
+  min-height:100dvh
 }
 .app{
   min-height:100vh;
