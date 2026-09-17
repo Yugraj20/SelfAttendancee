@@ -21,17 +21,28 @@ function App() {
  const [user,setUser]=useState<AuthUser|null>(null),[loading,setLoading]=useState(true),[page,setPage]=useState<Page>('home');
  const [subjects,setSubjects]=useState<Subject[]>([]),[records,setRecords]=useState<Attendance[]>([]),[table,setTable]=useState<TimetableEntry[]>([]),[settings,setSettings]=useState<Settings|null>(null);
  const [modal,setModal]=useState<'subject'|'entry'|'import'|'attendance-import'|'backup'|'restore'|'clear'|null>(null),[editSubject,setEditSubject]=useState<Subject|null>(null),[editEntry,setEditEntry]=useState<TimetableEntry|null>(null),[toast,setToast]=useState('');
- const [syncStatus,setSyncStatus]=useState<SyncStatus>('idle');
+ const [syncStatus,setSyncStatus]=useState<SyncStatus>('idle'),[restoring,setRestoring]=useState(false);
  const uid=user?.uid ?? '';
  const flash=(m:string)=>{setToast(m);window.setTimeout(()=>setToast(''),3500)};
- useEffect(()=>{ if(!auth){setLoading(false);return} return onAuthStateChanged(auth,async u=>{
+ useEffect(()=>{ if(!auth){setLoading(false);return} let run=0; return onAuthStateChanged(auth,async u=>{
+   // StrictMode mounts, unmounts and remounts in development, so two auth callbacks can be in
+   // flight at once. Only the newest one is allowed to write state; an older one finishing late
+   // used to overwrite fresh data with the snapshot it read before the cloud pull landed.
+   const mine=++run;
    setUser(u);setLoading(false);
-   if(!u){setSyncStatus('idle');return}
+   if(!u){setSyncStatus('idle');setRestoring(false);return}
+   const show=async()=>{const d=await userData(u.uid);if(run!==mine)return;setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings)};
    await put('users',{uid:u.uid,email:u.email??'',name:u.displayName??'',photoURL:u.photoURL??'',updatedAt:new Date().toISOString()});
-   const d=await userData(u.uid);setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings);
-   // Reconcile against the cloud in the background — local data is already on screen, so this never blocks the UI.
-   const changed=await syncOnLogin(u.uid,setSyncStatus);
-   if(changed){const d2=await userData(u.uid);setSubjects(d2.subjects);setRecords(d2.attendance);setTable(d2.timetable);setSettings(d2.settings)}
+   await show();
+   // Reconcile against the cloud. On a device that has no local copy yet this is the only source
+   // of the user's data, so the UI says it is restoring rather than showing the empty state.
+   if(run===mine)setRestoring(true);
+   await syncOnLogin(u.uid,setSyncStatus);
+   // Always re-read, whatever syncOnLogin reports. It writes to IndexedDB before it can fail, so
+   // keying the re-read off a success flag left the pulled data on disk but not on screen until
+   // the user refreshed the page by hand.
+   await show();
+   if(run===mine)setRestoring(false);
  })},[]);
  useEffect(()=>{const t=settings?.theme??'system';document.documentElement.dataset.theme=t;},[settings?.theme]);
  const reload=async(push=true)=>{if(!uid)return;const d=await userData(uid);setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings);if(push)pushToCloud(uid,setSyncStatus)};
@@ -43,6 +54,9 @@ function App() {
  const navigate=(p:Page)=>setPage(p);
  if(loading)return <div className="center"><div className="spinner"/>Loading your attendance…</div>;
  if(!user)return <Login />;
+ // First sign-in on a device: there is nothing local yet, so wait for the cloud pull instead of
+ // flashing “Start with your subjects” at someone who already has a term of data.
+ if(restoring&&!subjects.length&&!records.length)return <div className="center"><div className="spinner"/>Restoring your attendance…</div>;
  const nav=[['home',Home,'Home'],['attendance',Check,'Attendance'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Statistics'],['settings',SettingsIcon,'Settings']] as const;
  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')}><img src={user.photoURL??''} alt="Profile"/></button></div></header>
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
@@ -53,37 +67,113 @@ function App() {
 }
 function Brand(){return <div className="brand"><span>✓</span><b>Self Attendance</b></div>}
 function SyncBadge({status}:{status:SyncStatus}){if(status==='idle')return null;const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:'Sync paused — retrying'}[status];return <span className={`sync-badge ${status}`}>{status==='syncing'?<span className="spinner tiny"/>:<i className="dot"/>}{label}</span>}
-// A deterministic term of attendance — ~76% present, which is about what a 75% target looks like.
-// Fixed rather than random so the hero animates identically on every load.
-const CELLS=Array.from({length:63},(_,i)=>{const n=(i*37+11)%29;return n<4?'absent':n<7?'idle':'present'});
+// Seven weeks of a term, read as six weekday rows — one square per scheduled class. Fixed rather
+// than random so the screen animates identically on every load, and chosen so the figures agree
+// with each other: 31 present, 6 absent and 5 not held is exactly the 22-of-24 and 9-of-13 split
+// shown in the two subject cards, and both cards' margins are what math.ts would work out.
+const TERM=['pppppap','pppappp','pappppa','ppppap-','ppappp-','pp-p-p-'];
+// Namespaced: bare .present/.absent already belong to the attendance mark buttons.
+const TERM_CLASS:Record<string,string>={p:'mark-present',a:'mark-absent','-':'mark-none'};
 const HEADLINE='Know exactly how many classes you can miss.';
-function GoogleMark(){return <svg className="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/><path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/><path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/></svg>}
+const REPO='https://github.com/Yugraj20/SelfAttendancee';
+// The sign-in screen loads before lucide-react would be worth pulling in, so its few icons are
+// inline. Everything shares one stroked 24px box.
+function Stroke({children,width=2}:{children:React.ReactNode,width?:number}){return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>}
+function GoogleMark(){return <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/><path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/><path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/></svg>}
 function Login(){
   const [error,setError]=useState(''),[busy,setBusy]=useState(false);
   const surface=useRef<HTMLDivElement>(null);
-  // Pointer position feeds the spotlight and the card's parallax through CSS custom properties,
-  // so the effect costs one style write per move instead of a React render.
-  const track=(e:React.PointerEvent<HTMLDivElement>)=>{const el=surface.current;if(!el||e.pointerType!=='mouse')return;const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;el.style.setProperty('--mx',`${(x*100).toFixed(1)}%`);el.style.setProperty('--my',`${(y*100).toFixed(1)}%`);el.style.setProperty('--tilt-y',`${(x-.5)*5}deg`);el.style.setProperty('--tilt-x',`${(.5-y)*4}deg`)};
-  const reset=()=>{const el=surface.current;if(!el)return;el.style.setProperty('--tilt-y','0deg');el.style.setProperty('--tilt-x','0deg')};
-  const go=async()=>{setBusy(true);setError('');try{await signIn()}catch(e){setError(e instanceof Error?e.message:'Sign-in failed. Try again.')}finally{setBusy(false)}};
-  return <div className="login" ref={surface} onPointerMove={track} onPointerLeave={reset}>
-    <div className="aurora" aria-hidden="true"><i/><i/></div>
+  // Pointer position feeds the ambient spotlight through CSS custom properties, so the effect
+  // costs one style write per move instead of a React render.
+  const track=(e:React.PointerEvent<HTMLDivElement>)=>{const el=surface.current;if(!el||e.pointerType!=='mouse')return;const r=el.getBoundingClientRect();el.style.setProperty('--mx',`${((e.clientX-r.left)/r.width*100).toFixed(1)}%`);el.style.setProperty('--my',`${((e.clientY-r.top)/r.height*100).toFixed(1)}%`)};
+  const go=async()=>{setBusy(true);setError('');try{await signIn()}catch(e){setError(e instanceof Error?e.message:'That sign-in did not go through. Check your connection and try again.')}finally{setBusy(false)}};
+  return <div className="login" ref={surface} onPointerMove={track}>
+    <div className="login-glow" aria-hidden="true"><i/><i/><i/></div>
     <div className="login-shell">
-      <section className="login-lead">
-        <Brand/>
-        <h1>{HEADLINE.split(' ').map((w,i)=><span key={i} style={{'--i':i} as CSSProperties}>{w}</span>)}</h1>
-        <p>One tap marks a class. Self Attendance keeps the record on this device and works out the percentages for you.</p>
-        <div className="term-grid" role="img" aria-label="A term of attendance, mostly present with a handful of absences">{CELLS.map((c,i)=><i key={i} className={c} style={{'--i':i} as CSSProperties}/>)}</div>
-        <ul className="term-legend"><li className="present">present</li><li className="absent">absent</li><li className="idle">not marked</li></ul>
-      </section>
-      <section className="login-card">
-        <h2>Sign in to sync</h2>
-        <p>Your attendance is kept on this device, so the app stays fast and works offline. Signing in also backs it up to a private record of your own, so it follows you to another device.</p>
-        {!firebaseConfigured&&<div className="notice">Firebase needs configuration. Copy <code>.env.example</code> to <code>.env.local</code> and add your web app values.</div>}
-        {error&&<div className="error">{error}</div>}
-        <button className="google full" onClick={go} disabled={busy}>{busy?<span className="spinner"/>:<GoogleMark/>}{busy?'Signing in…':'Continue with Google'}</button>
-        <small>Google shares your name, email and profile photo. Your subjects, timetable and attendance are only ever written to your own record.</small>
-      </section>
+      <header className="login-head">
+        <div className="login-brand">
+          <span className="login-mark"><Stroke width={3.2}><path d="M20 6 9 17l-5-5"/></Stroke></span>
+          <span><b>Self Attendance</b><small>Smart class and bunk engine</small></span>
+        </div>
+        <span className="login-live"><i/>Works offline</span>
+      </header>
+      <div className="login-grid">
+        <section className="login-lead">
+          <p className="login-tag">Built for the 75% rule</p>
+          <h1>{HEADLINE.split(' ').map((w,i)=><span key={i} style={{'--i':i} as CSSProperties}>{w}</span>)}</h1>
+          <p>One tap marks a class. Self Attendance works out the percentages and tells you how many lectures you can still skip before the shortage list does.</p>
+        </section>
+
+        <div className="login-side">
+          <section className="login-panel">
+            <small><Stroke><path d="M12 13v8"/><path d="m8 17 4-4 4 4"/><path d="M20 16.6A5 5 0 0 0 18 7h-1.3A8 8 0 1 0 4 15.2"/></Stroke>Backup and sync</small>
+            <h2>Sign in to carry your semester across devices</h2>
+            <p>Your attendance lives on this device, so the app is instant and works offline. Signing in keeps a private copy, so the same term shows up on your phone and your laptop.</p>
+            {!firebaseConfigured&&<div className="login-msg setup">Firebase needs configuration. Copy <code>.env.example</code> to <code>.env.local</code> and add your web app values.</div>}
+            {error&&<div className="login-msg">{error}</div>}
+            <button className="google" onClick={go} disabled={busy} aria-busy={busy}>{busy?<span className="spinner"/>:<GoogleMark/>}{busy?'Signing in…':'Continue with Google'}</button>
+            <div className="login-vault">
+              <Stroke><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></Stroke>
+              <div>
+                <b>Google shares your name, email and photo</b>
+                <p>Nothing else. Your subjects, timetable and attendance stay in a record only your account can open.</p>
+              </div>
+            </div>
+          </section>
+          <nav className="login-links">
+            <a href={`${REPO}#cloud-sync-firestore`}><Stroke><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></Stroke>How sync works</a>
+            <a href={REPO}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.36 1.09 2.94.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2"/></svg>Source on GitHub</a>
+          </nav>
+        </div>
+
+        <div className="login-facts">
+          <div><span><Stroke><path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></Stroke></span>Mark a lecture present or absent in one tap</div>
+          <div><span><Stroke><path d="M3 13h4l3 7 4-16 3 9h4"/></Stroke></span>Every percentage and margin updates as you mark</div>
+          <div><span><Stroke><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="8" width="10" height="8" rx="1"/></Stroke></span>Bring your timetable in from a photo or PDF</div>
+        </div>
+
+        <section className="login-demo">
+          <header>
+            <div>
+              <h2>Your term, one square per class</h2>
+              <p>Seven weeks of a real 75% semester</p>
+            </div>
+            <span className="login-chip"><Stroke><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></Stroke>Target 75%</span>
+          </header>
+          <div className="login-body">
+            <div className="term" role="img" aria-label="Seven weeks of attendance: 31 classes present, 6 absent, 5 not held">
+              {TERM.flatMap((row,r)=>[<b key={`day-${r}`}>{DAYS[r].slice(0,3)}</b>,...[...row].map((ch,c)=><i key={`${r}-${c}`} className={TERM_CLASS[ch]} style={{'--i':r*7+c} as CSSProperties}/>)])}
+            </div>
+            <div className="login-figures">
+              <div className="login-subjects">
+                <article className="login-subject safe">
+                  <header>
+                    <div><h3>Operating Systems</h3><small>CS-302, 22 of 24 held</small></div>
+                    <b>91.7%</b>
+                  </header>
+                  <div className="login-bar"><i style={{width:'91.7%'}}/><u/></div>
+                  <p><Stroke><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></Stroke>Safe to miss 5 classes</p>
+                  <small className="login-next">Next class Thursday, 10:00</small>
+                </article>
+                <article className="login-subject risk">
+                  <header>
+                    <div><h3>Theory of Computation</h3><small>CS-304, 9 of 13 held</small></div>
+                    <b>69.2%</b>
+                  </header>
+                  <div className="login-bar"><i style={{width:'69.2%'}}/><u/></div>
+                  <p><Stroke><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></Stroke>Attend the next 3 to clear 75%</p>
+                  <small className="login-next">Next class Friday, 14:00</small>
+                </article>
+              </div>
+              <div className="term-tally">
+                <div className="p"><b>31</b><span>present</span></div>
+                <div className="a"><b>6</b><span>absent</span></div>
+                <div className="n"><b>5</b><span>not held</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 }

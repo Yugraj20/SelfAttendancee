@@ -8,6 +8,8 @@ import { restore, userData } from './db';
 import type { Attendance, Settings, Subject, TimetableEntry } from './types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
+/** What a login reconcile actually did, so the caller never has to guess from a boolean. */
+export type SyncResult = 'pulled' | 'seeded' | 'failed' | 'skipped';
 
 interface CloudDoc {
   subjects: Subject[];
@@ -31,11 +33,22 @@ function userDoc(fs: Firestore, uid: string) {
  *    at the document level, keyed by the `updatedAt` timestamp every push sets).
  *  - Cloud doc missing -> this device has data Firestore doesn't know about yet (first sign-in, or
  *    a brand new account), so the local copy is pushed up to seed the cloud doc.
- * Returns true if local IndexedDB data changed underneath the caller (so the caller should re-read
- * it and refresh UI state), false otherwise.
+ * Reports what happened rather than whether anything changed: a failure can still have written
+ * to IndexedDB (restore() runs before setDoc can throw), so callers must re-read either way.
+ * Concurrent calls for the same uid share one in-flight promise — StrictMode remounts and a
+ * quick sign-out/sign-in would otherwise run two clear-and-rewrite cycles over each other.
  */
-export async function syncOnLogin(uid: string, onStatus?: (s: SyncStatus) => void): Promise<boolean> {
-  if (!firestore) return false;
+const inFlight = new Map<string, Promise<SyncResult>>();
+export function syncOnLogin(uid: string, onStatus?: (s: SyncStatus) => void): Promise<SyncResult> {
+  const running = inFlight.get(uid);
+  if (running) return running;
+  const started = reconcile(uid, onStatus).finally(() => inFlight.delete(uid));
+  inFlight.set(uid, started);
+  return started;
+}
+
+async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promise<SyncResult> {
+  if (!firestore) return 'skipped';
   try {
     onStatus?.('syncing');
     const snap = await getDoc(userDoc(firestore, uid));
@@ -48,16 +61,16 @@ export async function syncOnLogin(uid: string, onStatus?: (s: SyncStatus) => voi
         settings: cloud.settings ?? { uid, defaultTarget: 75, theme: 'system', onboardingComplete: false },
       }, true);
       onStatus?.('synced');
-      return true;
+      return 'pulled';
     }
     const local = await userData(uid);
     await setDoc(userDoc(firestore, uid), { ...local, updatedAt: new Date().toISOString() });
     onStatus?.('synced');
-    return false;
+    return 'seeded';
   } catch (e) {
     console.error('Cloud sync (login) failed:', e);
     onStatus?.(navigator.onLine ? 'error' : 'offline');
-    return false;
+    return 'failed';
   }
 }
 
