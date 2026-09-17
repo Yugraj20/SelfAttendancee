@@ -1525,6 +1525,135 @@ select.status-unknown{
   }
 }
 
+/* ===== Motion tokens — transitions.dev =====================================================
+   Shared scale the transitions below read from. */
+:root{
+  --modal-open-dur:250ms;
+  --modal-close-dur:150ms;
+  --modal-scale:0.96;
+  --modal-scale-close:0.96;
+  --modal-ease:cubic-bezier(0.22, 1, 0.36, 1);
+  --toast-open:350ms;
+  --toast-close:250ms;
+  --toast-distance:16px;
+  --toast-blur:2px;
+  --toast-scale:0.97;
+  --toast-ease:cubic-bezier(0.22, 1, 0.36, 1)
+}
+/* Modal open / close — transitions.dev 06-modal */
+.t-modal{
+  transform-origin:center;
+  transform:scale(var(--modal-scale));
+  opacity:0;
+  pointer-events:none;
+  transition:transform var(--modal-open-dur) var(--modal-ease),opacity var(--modal-open-dur) var(--modal-ease);
+  will-change:transform,opacity
+}
+.t-modal.is-open{
+  transform:scale(1);
+  opacity:1;
+  pointer-events:auto
+}
+.t-modal.is-closing{
+  transform:scale(var(--modal-scale-close));
+  opacity:0;
+  pointer-events:none;
+  transition:transform var(--modal-close-dur) var(--modal-ease),opacity var(--modal-close-dur) var(--modal-ease)
+}
+.t-scrim{
+  opacity:0;
+  transition:opacity var(--modal-close-dur) var(--modal-ease)
+}
+.t-scrim.is-open{
+  opacity:1;
+  transition:opacity var(--modal-open-dur) var(--modal-ease)
+}
+/* Toast open / close — transitions.dev 22-toast */
+.t-toast{
+  opacity:0;
+  pointer-events:none;
+  transform:translateY(var(--toast-distance)) scale(var(--toast-scale));
+  filter:blur(var(--toast-blur));
+  will-change:transform,opacity,filter;
+  transition:opacity var(--toast-close) var(--toast-ease),transform var(--toast-close) var(--toast-ease),filter var(--toast-close) var(--toast-ease)
+}
+.t-toast.is-open{
+  opacity:1;
+  pointer-events:auto;
+  transform:translateY(0) scale(1);
+  filter:blur(0);
+  transition:opacity var(--toast-open) var(--toast-ease),transform var(--toast-open) var(--toast-ease),filter var(--toast-open) var(--toast-ease)
+}
+@media (prefers-reduced-motion:reduce){
+  .t-modal,.t-scrim,.t-toast{
+    transition:none!important
+  }
+}
+
+/* ===== Dark themes =========================================================================
+   data-theme now only ever holds light, dark or amoled (App.tsx resolves `system` against the
+   OS before setting it). These cover the surfaces that were still hardcoded light, and set
+   color-scheme so native controls — selects, time and colour inputs, radios, scrollbars —
+   follow the theme instead of rendering white on a dark panel. */
+:root{
+  color-scheme:light
+}
+:root[data-theme=dark],:root[data-theme=amoled]{
+  color-scheme:dark
+}
+.center{
+  flex-direction:column;
+  gap:14px
+}
+:root[data-theme=dark] .error,:root[data-theme=amoled] .error{
+  background:#3b1f26;
+  color:#ffb4bd
+}
+:root[data-theme=dark] .success,:root[data-theme=amoled] .success{
+  background:#123a2f;
+  color:#6ee7b7
+}
+:root[data-theme=dark] .notice,:root[data-theme=amoled] .notice{
+  background:#332a17;
+  color:#f3d9a6
+}
+:root[data-theme=dark] .present,:root[data-theme=amoled] .present{
+  background:#123a2f;
+  color:#6ee7b7
+}
+:root[data-theme=dark] .absent,:root[data-theme=amoled] .absent{
+  background:#3b1f26;
+  color:#ffb4bd
+}
+:root[data-theme=dark] .three .present.picked,:root[data-theme=amoled] .three .present.picked{
+  background:#14523f
+}
+:root[data-theme=dark] .three .absent.picked,:root[data-theme=amoled] .three .absent.picked{
+  background:#5a232e
+}
+:root[data-theme=dark] .ring:before,:root[data-theme=amoled] .ring:before{
+  background:#2b2a38
+}
+:root[data-theme=dark] .drop,:root[data-theme=amoled] .drop{
+  border-color:#3f3e4d
+}
+:root[data-theme=dark] .spinner,:root[data-theme=amoled] .spinner{
+  border-color:#3a3950;
+  border-top-color:var(--brand)
+}
+:root[data-theme=dark] .account button,:root[data-theme=dark] .themes button,:root[data-theme=dark] .data-actions button{
+  background:#32313e;
+  color:var(--ink)
+}
+/* amoled was inheriting the light button fills — only the dark rules had been written. */
+:root[data-theme=amoled] .three button,:root[data-theme=amoled] .themes button,:root[data-theme=amoled] .data-actions button,:root[data-theme=amoled] .account button{
+  background:#1b1b1b;
+  color:var(--ink)
+}
+:root[data-theme=amoled] .ring:before{
+  background:#161616
+}
+
 /* ===== Sign in ============================================================================
    Self-contained and dark on purpose: settings (and therefore data-theme) have not loaded yet
    at sign-in, so this screen carries its own palette — the Midnight Slate Utility tokens —
