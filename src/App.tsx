@@ -13,7 +13,7 @@ import { makeBackup, parseBackup } from './backup';
 import type { Attendance, AttendanceStatus, BackupPayload, DetectedEntry, DetectedStatus, ReviewRow, Settings, Subject, SubjectGroup, TimetableEntry } from './types';
 import { DAYS } from './types';
 
-type Page='home'|'attendance'|'calendar'|'timetable'|'statistics'|'settings';
+type Page='home'|'calendar'|'timetable'|'statistics'|'settings';
 const colors=['#6d5dfc','#20c997','#ff8d5c','#e95d9a','#3989ff','#e0a526'];
 const todayDay=()=>DAYS[(new Date().getDay()+6)%7];
 const initialSubject=(uid:string, target:number):Subject=>({id:id(),uid,name:'',code:'',teacher:'',room:'',color:colors[0],target,createdAt:new Date().toISOString()});
@@ -119,11 +119,17 @@ function App() {
  const deleteSubject=async(s:Subject, history:boolean)=>{if(!confirm(`Delete ${s.name}?`))return;await remove('subjects',s.id);if(history)await Promise.all(records.filter(r=>r.subjectId===s.id).map(r=>remove('attendance',r.id)));await reload();flash(history?'Subject and history deleted':'Subject deleted; attendance history preserved')};
  const mark=async(subjectId:string,status:AttendanceStatus,date=dateISO(),sessionId='manual')=>{
    buzz();
-   const old=records.find(r=>r.subjectId===subjectId&&r.date===date&&r.sessionId===sessionId);
-   const item:Attendance={id:old?.id??id(),uid,subjectId,date,sessionId,status,updatedAt:new Date().toISOString()};
+   const dayOfWeek=DAYS[(new Date(date+'T12:00').getDay()+6)%7];
+   const defaultEntry=table.find(t=>t.day===dayOfWeek&&t.subjectId===subjectId);
+   const resolvedSessionId=sessionId==='manual'&&defaultEntry?defaultEntry.id:sessionId;
+   const old=records.find(r=>r.subjectId===subjectId&&r.date===date&&r.sessionId===resolvedSessionId)
+     ?? records.find(r=>r.subjectId===subjectId&&r.date===date&&r.sessionId===sessionId)
+     ?? records.find(r=>r.subjectId===subjectId&&r.date===date);
+   const targetSessionId=old?.sessionId??resolvedSessionId;
+   const item:Attendance={id:old?.id??id(),uid,subjectId,date,sessionId:targetSessionId,status,updatedAt:new Date().toISOString()};
    await put('attendance',item);await reload();
    if(status==='unmarked'){pendingUndo.current=null;flash('Attendance cleared')}
-   else{pendingUndo.current={subjectId,date,sessionId,prev:old};flash(`Marked ${status}`,true)}
+   else{pendingUndo.current={subjectId,date,sessionId:targetSessionId,prev:old};flash(`Marked ${status}`,true)}
  };
  // Reverses exactly the record `mark` last touched: puts the prior record back if there was one,
  // otherwise deletes the one `mark` created. Works regardless of how much time or navigation
@@ -143,11 +149,11 @@ function App() {
  // First sign-in on a device: there is nothing local yet, so wait for the cloud pull instead of
  // flashing “Start with your subjects” at someone who already has a term of data.
  if(restoring&&!subjects.length&&!records.length)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Restoring your attendance…</div>;
- const nav=[['home',Home,'Home'],['attendance',Check,'Attendance'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Statistics'],['settings',SettingsIcon,'Settings']] as const;
+ const nav=[['home',Home,'Home'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Statistics'],['settings',SettingsIcon,'Settings']] as const;
  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')}><img src={user.photoURL??''} alt="Profile"/></button></div></header>
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
- {page==='attendance'&&<AttendancePage subjects={subjects} records={records} onMark={mark} onImport={()=>setModal('attendance-import')}/>} {page==='calendar'&&<CalendarPage subjects={subjects} records={records} onMark={mark}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onAdd={()=>{setEditEntry(blankEntry(uid));setModal('entry')}} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} stats={stats} restoring={restoring}/>} {page==='settings'&&<SettingsPage user={user} settings={settings!} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{cancelPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle')}}/>}
- </main><nav className="bottom">{nav.slice(0,5).map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
+ {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onAdd={()=>{setEditEntry(blankEntry(uid));setModal('entry')}} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} stats={stats} restoring={restoring}/>} {page==='settings'&&<SettingsPage user={user} settings={settings!} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{cancelPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle')}}/>}
+ </main><nav className="bottom">{nav.slice(0,4).map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
  {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onDone={async(n:number)=>{await reload();setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings!}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Clear local data?</h2><p>This removes attendance, subjects and timetable for this account from this device only. Download a backup first. Your Firestore backup is left untouched, so signing out and back in — or opening the app on another device — restores it.</p><button className="danger full" onClick={async()=>{await clearUser(uid);await reload(false);setModal(null);flash('Local data cleared')}}>Clear all data</button></Modal>}
  </div>
 }
@@ -292,7 +298,8 @@ function TodaysClasses({entries,subjects,records,currentId,nextId,restoring,onMa
     {restoring?<SkeletonToday/>:!entries.length?<Empty title="No classes today" text="Enjoy the day off, or set up your timetable if this looks wrong." action="Set up timetable" onAction={onSetup}/>:<div className="today-list">
       {entries.map(e=>{
         const subject=subjects.find(s=>s.id===e.subjectId);
-        const record=records.find(r=>r.subjectId===e.subjectId&&r.date===date&&r.sessionId===e.id);
+        const record=records.find(r=>r.subjectId===e.subjectId&&r.date===date&&r.sessionId===e.id)
+          ?? records.find(r=>r.subjectId===e.subjectId&&r.date===date);
         const status=record?.status;
         return <article key={e.id} className={`card today-class${e.id===currentId?' now':''}${status==='cancelled'?' is-cancelled':''}${flashed===e.id?' card-flash':''}`} style={{'--accent':subject?.color??colors[0]} as CSSProperties}>
           <div className="today-class-time"><b>{e.startTime}</b><small>{e.endTime}</small></div>
@@ -330,8 +337,53 @@ function SkeletonSubjects(){
     </article>)}
   </section>
 }
-function AttendancePage({subjects,records,onMark,fixedDate,onImport}:{subjects:Subject[];records:Attendance[];onMark:(id:string,s:AttendanceStatus)=>void;fixedDate?:string;onImport?:()=>void}) { const [chosen,setChosen]=useState(dateISO()); const day=fixedDate??chosen; return <>{onImport&&<div className="import-banner"><Sparkles/><div><b>Import attendance with AI</b><span>Upload a .txt export and review every record before it is saved.</span></div><button onClick={onImport}>Import</button></div>}<div className="toolbar"><label>Class date<input type="date" value={day} disabled={Boolean(fixedDate)} onChange={e=>setChosen(e.target.value)}/></label><span>{new Date(day+'T12:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</span></div>{!subjects.length?<Empty title="No subjects yet" text="Add subjects from Home to start marking attendance."/>:<div className="attendance-list">{subjects.map(s=>{const record=records.find(r=>r.subjectId===s.id&&r.date===day&&r.sessionId==='manual');return <article className={`card attendance-row${record?.status==='cancelled'?' is-cancelled':''}`} key={s.id}><span className="subject-icon" style={{background:s.color}}>{s.code.slice(0,2)}</span><div><h3>{s.name}</h3><small>{record&&record.status!=='unmarked'?`Marked ${record.status}`:'Not marked'}</small></div><div className="three"><button className={record?.status==='present'?'picked present':''} onClick={()=>onMark(s.id,'present')}>Present</button><button className={record?.status==='absent'?'picked absent':''} onClick={()=>onMark(s.id,'absent')}>Absent</button><button className={record?.status==='cancelled'?'picked cancelled':''} onClick={()=>onMark(s.id,'cancelled')}>Cancelled</button><button className={record?.status==='unmarked'?'picked':''} onClick={()=>onMark(s.id,'unmarked')}>Clear</button></div></article>})}</div>}</> }
-function CalendarPage({subjects,records,onMark}:{subjects:Subject[],records:Attendance[],onMark:(id:string,s:AttendanceStatus,date:string)=>void}){const [cursor,setCursor]=useState(()=>new Date()),[selected,setSelected]=useState(dateISO());const y=cursor.getFullYear(),m=cursor.getMonth(),first=new Date(y,m,1),count=new Date(y,m+1,0).getDate(),offset=(first.getDay()+6)%7;const dates=Array.from({length:offset+count},(_,i)=>i<offset?'':`${y}-${String(m+1).padStart(2,'0')}-${String(i-offset+1).padStart(2,'0')}`);const daily=records.filter(r=>r.date===selected&&r.status!=='unmarked');return <><div className="calendar-head"><button className="icon" onClick={()=>setCursor(new Date(y,m-1,1))}><ChevronLeft/></button><h2>{cursor.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h2><button className="icon" onClick={()=>setCursor(new Date(y,m+1,1))}><ChevronRight/></button></div><div className="week">{['M','T','W','T','F','S','S'].map((x,i)=><b key={i}>{x}</b>)}{dates.map((d,i)=>d?<button key={d} onClick={()=>setSelected(d)} className={`date ${selected===d?'selected':''}`}><span>{i-offset+1}</span><i className={records.some(r=>r.date===d&&r.status==='absent')?'has-absent':records.some(r=>r.date===d&&r.status==='present')?'has-present':''}/></button>:<span key={i}/>)}</div><section className="section-title"><div><h2>{new Date(selected+'T12:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})}</h2><p>{daily.filter(x=>x.status==='present').length} present · {daily.filter(x=>x.status==='absent').length} absent</p></div></section><AttendancePage subjects={subjects} records={records} fixedDate={selected} onMark={(sid,s)=>onMark(sid,s,selected)}/></>}
+function DayAttendance({subjects,records,table,day,onMark}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];day:string;onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void}){
+  const dayOfWeek=DAYS[(new Date(day+'T12:00').getDay()+6)%7];
+  const scheduled=table.filter(t=>t.day===dayOfWeek).sort((a,b)=>a.startTime.localeCompare(b.startTime));
+  const otherSubjects=subjects.filter(s=>!scheduled.some(e=>e.subjectId===s.id));
+  if(!subjects.length)return <Empty title="No subjects yet" text="Add subjects from Home to start marking attendance."/>;
+  return <div className="attendance-list">
+    {scheduled.map(e=>{
+      const subject=subjects.find(s=>s.id===e.subjectId);
+      const record=records.find(r=>r.subjectId===e.subjectId&&r.date===day&&r.sessionId===e.id)
+        ?? records.find(r=>r.subjectId===e.subjectId&&r.date===day);
+      const status=record?.status;
+      return <article className={`card attendance-row${status==='cancelled'?' is-cancelled':''}`} key={e.id}>
+        <span className="subject-icon" style={{background:subject?.color||colors[0]}}>{(subject?.code||e.subject).slice(0,2)}</span>
+        <div>
+          <h3>{e.subject}</h3>
+          <small>{e.startTime}–{e.endTime} · <span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span>{e.room?` · ${e.room}`:''} · {status&&status!=='unmarked'?`Marked ${status}`:'Not marked'}</small>
+        </div>
+        <div className="three">
+          <button className={status==='present'?'picked present':''} onClick={()=>onMark(e.subjectId,'present',day,e.id)}>Present</button>
+          <button className={status==='absent'?'picked absent':''} onClick={()=>onMark(e.subjectId,'absent',day,e.id)}>Absent</button>
+          <button className={status==='cancelled'?'picked cancelled':''} onClick={()=>onMark(e.subjectId,'cancelled',day,e.id)}>Cancelled</button>
+          <button className={status==='unmarked'?'picked':''} onClick={()=>onMark(e.subjectId,'unmarked',day,e.id)}>Clear</button>
+        </div>
+      </article>;
+    })}
+    {scheduled.length>0&&otherSubjects.length>0&&<div className="section-title" style={{marginTop:16,marginBottom:4}}><div><h3 style={{fontSize:14,color:'var(--muted)',fontWeight:600}}>Other subjects</h3></div></div>}
+    {(scheduled.length===0?subjects:otherSubjects).map(s=>{
+      const record=records.find(r=>r.subjectId===s.id&&r.date===day);
+      const status=record?.status;
+      const targetSessionId=record?.sessionId??'manual';
+      return <article className={`card attendance-row${status==='cancelled'?' is-cancelled':''}`} key={s.id}>
+        <span className="subject-icon" style={{background:s.color}}>{s.code.slice(0,2)||'•'}</span>
+        <div>
+          <h3>{s.name}</h3>
+          <small>{status&&status!=='unmarked'?`Marked ${status}`:'Not marked'}</small>
+        </div>
+        <div className="three">
+          <button className={status==='present'?'picked present':''} onClick={()=>onMark(s.id,'present',day,targetSessionId)}>Present</button>
+          <button className={status==='absent'?'picked absent':''} onClick={()=>onMark(s.id,'absent',day,targetSessionId)}>Absent</button>
+          <button className={status==='cancelled'?'picked cancelled':''} onClick={()=>onMark(s.id,'cancelled',day,targetSessionId)}>Cancelled</button>
+          <button className={status==='unmarked'?'picked':''} onClick={()=>onMark(s.id,'unmarked',day,targetSessionId)}>Clear</button>
+        </div>
+      </article>;
+    })}
+  </div>;
+}
+function CalendarPage({subjects,records,table,onMark,onImport}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onImport?:()=>void}){const [cursor,setCursor]=useState(()=>new Date()),[selected,setSelected]=useState(dateISO());const y=cursor.getFullYear(),m=cursor.getMonth(),first=new Date(y,m,1),count=new Date(y,m+1,0).getDate(),offset=(first.getDay()+6)%7;const dates=Array.from({length:offset+count},(_,i)=>i<offset?'':`${y}-${String(m+1).padStart(2,'0')}-${String(i-offset+1).padStart(2,'0')}`);const daily=records.filter(r=>r.date===selected&&r.status!=='unmarked');return <><div className="calendar-head"><button className="icon" onClick={()=>setCursor(new Date(y,m-1,1))} aria-label="Previous month"><ChevronLeft/></button><h2>{cursor.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h2><button className="icon" onClick={()=>setCursor(new Date(y,m+1,1))} aria-label="Next month"><ChevronRight/></button></div><div className="week">{['M','T','W','T','F','S','S'].map((x,i)=><b key={i}>{x}</b>)}{dates.map((d,i)=>d?<button key={d} onClick={()=>setSelected(d)} className={`date ${selected===d?'selected':''}`}><span>{i-offset+1}</span><i className={records.some(r=>r.date===d&&r.status==='absent')?'has-absent':records.some(r=>r.date===d&&r.status==='present')?'has-present':''}/></button>:<span key={i}/>)}</div><section className="section-title"><div><h2>{new Date(selected+'T12:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</h2><p>{daily.filter(x=>x.status==='present').length} present · {daily.filter(x=>x.status==='absent').length} absent</p></div>{onImport&&<button className="text" onClick={onImport} style={{display:'inline-flex',alignItems:'center',gap:6}}><Sparkles size={16}/> Import AI</button>}</section><DayAttendance subjects={subjects} records={records} table={table} day={selected} onMark={onMark}/></>}
 const blankEntry=(uid:string):TimetableEntry=>({id:id(),uid,day:'Monday',subjectId:'',subject:'',startTime:'09:00',endTime:'10:00',room:'',teacher:'',type:'Lecture',notes:'',order:0});
 function TimetablePage({subjects,table,onAdd,onEdit,onDelete,onImport}:{subjects:Subject[],table:TimetableEntry[],onAdd:()=>void,onEdit:(e:TimetableEntry)=>void,onDelete:(e:TimetableEntry)=>void,onImport:()=>void}){const [day,setDay]=useState(todayDay());const entries=table.filter(t=>t.day===day).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <><div className="toolbar"><div className="day-tabs">{DAYS.map(d=><button key={d} className={d===day?'active':''} onClick={()=>setDay(d)}>{d.slice(0,3)}</button>)}</div><button className="primary" onClick={onAdd}><Plus/> Add class</button></div><div className="import-banner"><Sparkles/><div><b>Import timetable with AI</b><span>Upload a PDF or image, then review every detected class.</span></div><button onClick={onImport}>Import</button></div>{!entries.length?<Empty title={`No classes on ${day}`} text="Build your weekly plan manually or import a timetable." action="Import timetable" onAction={onImport}/>:<div className="timeline">{entries.map(e=><article className="card entry" key={e.id}><time>{e.startTime}<small>{e.endTime}</small></time><div><h3>{e.subject}</h3><p><span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'} {e.teacher&&`· ${e.teacher}`}</p><small>{e.notes}</small></div><button className="icon" onClick={()=>onEdit(e)}>•••</button><button className="icon danger-text" onClick={()=>onDelete(e)}><Trash2/></button></article>)}</div>}</>}
 function Statistics({subjects,records,stats,restoring}:{subjects:Subject[],records:Attendance[],stats:ReturnType<typeof overall>,restoring:boolean}){
@@ -464,7 +516,7 @@ function AttendanceImportModal({uid,subjects,records,defaultTarget,onDone,onClos
         <ImportStat label="Absent" value={saved.absent} tone="absent"/>
         <ImportStat label="Subjects created" value={saved.subjects}/>
       </div>
-      <p className="muted">Your percentages on Attendance and Statistics already include these.</p>
+      <p className="muted">Your percentages on Calendar and Statistics already include these.</p>
       <button className="primary full" onClick={()=>onDone(saved.records)}>Done</button>
     </>}
   </Modal>
