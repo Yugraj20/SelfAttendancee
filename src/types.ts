@@ -1,4 +1,4 @@
-export type AttendanceStatus = 'present' | 'absent' | 'unmarked';
+export type AttendanceStatus = 'present' | 'absent' | 'unmarked' | 'cancelled';
 export type Theme = 'light' | 'dark' | 'amoled' | 'system';
 export interface Subject { id: string; uid: string; name: string; code: string; teacher: string; room: string; color: string; target: number; createdAt: string }
 export interface Attendance { id: string; uid: string; subjectId: string; date: string; sessionId: string; status: AttendanceStatus; updatedAt: string }

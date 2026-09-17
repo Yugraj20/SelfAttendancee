@@ -482,6 +482,141 @@ h1{
   background:#ffeaed;
   color:#ca4054
 }
+.three .cancelled.picked{
+  background:#eceef2;
+  color:#4b5163
+}
+.attendance-row.is-cancelled h3{
+  text-decoration:line-through;
+  opacity:.65
+}
+.todays-classes{
+  margin-top:36px
+}
+.today-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px
+}
+.today-class{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:14px 16px;
+  border-left:4px solid var(--accent,var(--brand))
+}
+.today-class.now{
+  box-shadow:0 0 0 2px var(--brand) inset
+}
+.today-class.is-cancelled{
+  opacity:.6
+}
+.today-class.is-cancelled h3{
+  text-decoration:line-through
+}
+.today-class-time{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  min-width:54px;
+  font-family:Outfit;
+  color:var(--ink)
+}
+.today-class-time b{
+  font-size:15px
+}
+.today-class-time small{
+  color:var(--muted);
+  font-size:11px
+}
+.today-class-info{
+  flex:1;
+  min-width:0
+}
+.today-class-info h3{
+  font-size:15px;
+  display:flex;
+  align-items:center;
+  gap:7px
+}
+.today-class-info p{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:2px
+}
+.now-badge,.next-badge{
+  font-size:10px;
+  font-weight:700;
+  padding:2px 8px;
+  border-radius:20px
+}
+.now-badge{
+  background:var(--brand);
+  color:#fff
+}
+.next-badge{
+  background:var(--soft);
+  color:var(--brand)
+}
+.status-tag-present{
+  color:#147d63
+}
+.status-tag-absent{
+  color:#df5263
+}
+.status-tag-cancelled{
+  color:var(--muted);
+  text-decoration:line-through
+}
+.today-class-actions{
+  display:flex;
+  gap:6px;
+  flex-shrink:0
+}
+.tc-btn{
+  background:#f1f1f6;
+  color:var(--muted);
+  border-radius:10px;
+  display:grid;
+  place-items:center;
+  width:38px;
+  height:38px
+}
+.tc-btn.cancelled{
+  width:auto;
+  padding:0 12px;
+  font-size:11px;
+  font-weight:700
+}
+.tc-btn.present.picked{
+  background:#dff7ef;
+  color:#187e66
+}
+.tc-btn.absent.picked{
+  background:#ffeaed;
+  color:#ca4054
+}
+.tc-btn.cancelled.picked{
+  background:#eceef2;
+  color:#4b5163
+}
+.toast{
+  display:flex;
+  align-items:center;
+  gap:14px
+}
+.toast-undo{
+  color:#b8b3ff;
+  font-weight:700;
+  font-size:12px;
+  padding:0;
+  text-decoration:underline;
+  text-underline-offset:2px;
+  flex-shrink:0
+}
+.toast-undo:hover{
+  color:#fff
+}
 .calendar-head{
   display:flex;
   align-items:center;
@@ -1631,6 +1766,26 @@ select.status-unknown{
 }
 :root[data-theme=dark] .three .absent.picked,:root[data-theme=amoled] .three .absent.picked{
   background:#5a232e
+}
+:root[data-theme=dark] .three .cancelled.picked,:root[data-theme=amoled] .three .cancelled.picked{
+  background:#33323f;
+  color:#c7c5d6
+}
+:root[data-theme=dark] .tc-btn,:root[data-theme=amoled] .tc-btn{
+  background:#242232;
+  color:#8f8da3
+}
+:root[data-theme=dark] .tc-btn.present.picked,:root[data-theme=amoled] .tc-btn.present.picked{
+  background:#14523f;
+  color:#6ee7b7
+}
+:root[data-theme=dark] .tc-btn.absent.picked,:root[data-theme=amoled] .tc-btn.absent.picked{
+  background:#5a232e;
+  color:#ffb4bd
+}
+:root[data-theme=dark] .tc-btn.cancelled.picked,:root[data-theme=amoled] .tc-btn.cancelled.picked{
+  background:#33323f;
+  color:#c7c5d6
 }
 :root[data-theme=dark] .ring:before,:root[data-theme=amoled] .ring:before{
   background:#2b2a38
