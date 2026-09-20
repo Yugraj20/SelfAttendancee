@@ -4,4 +4,3 @@ dist
 .env.*.local
 .npm-cache
 .DS_Store
-scratch

@@ -1,132 +1,133 @@
 # Self Attendance
 
-A production-ready, local-first attendance tracker built with React 18, TypeScript, Vite, Firebase Authentication, Firestore, IndexedDB, Google Gemini AI and a PWA application shell. Every screen reads and writes IndexedDB directly, so the app is instant and fully usable offline. Signing in with Google optionally mirrors your timetable, attendance, subjects and settings to a private Firestore document (`users/{uid}`), so the same data follows you across devices.
+A production-ready, local-first attendance tracker built with React, TypeScript, Vite, Firebase Authentication, Firestore, IndexedDB, Gemini and a PWA shell. Every screen reads and writes IndexedDB directly, so the app is instant and fully usable offline. Signing in with Google additionally mirrors your timetable, attendance, subjects and settings to a private Firestore document (`users/{uid}`), so the same data follows you to another device — see [Cloud sync (Firestore)](#cloud-sync-firestore) below.
 
----
+## Run locally
 
-## Quick Start & Testing Instructions
+1. Install Node.js 20+ and run `npm install`.
+2. Copy `.env.example` to `.env.local`.
+3. Fill in the Firebase web configuration values. The values are intentionally not committed.
+4. Optionally add a Gemini key to `VITE_GEMINI_API_KEY` for timetable scanning and attendance import.
+5. Run `npm run dev`.
 
-### Prerequisites
-- Node.js 20+
-- npm 10+
+Run `npm run build` before deploying. It performs the TypeScript check and creates `dist/`.
 
-### Installation & Development
-```bash
-# 1. Install dependencies
-npm install
+## Firebase Google sign-in setup
 
-# 2. Configure environment
-cp .env.example .env.local
-# Add your Firebase and optional Gemini API keys to .env.local
+1. Create a Firebase project and register a **Web app**.
+2. In **Authentication → Sign-in method**, enable Google and provide support email details.
+3. Copy the web app configuration to `.env.local` as `VITE_FIREBASE_*` variables.
+4. In **Authentication → Settings → Authorized domains**, add your production GitHub Pages host, for example `your-name.github.io`. Firebase's web configuration is public client configuration, but restrict its API key and only authorize your own domains.
+5. Realtime Database, Firebase Storage, and any Admin SDK/service account are not required. **Firestore is required** for cross-device sync — see the next section.
 
-# 3. Run development server
-npm run dev
+## Cloud sync (Firestore)
+
+Sign-in does two things: it separates each Google account's data locally (IndexedDB stores are keyed by `uid`, so one device can hold several accounts' data side by side), and it now also syncs that data to Firestore so it's available on other devices.
+
+**How it works**
+
+- Local IndexedDB is always the source of truth for the UI — reads and writes never wait on the network.
+- On sign-in, the app checks `users/{uid}` in Firestore: if it exists, that cloud copy replaces the local copy for this `uid` on this device; if it doesn't (first sign-in from any device), the local copy is pushed up to seed it.
+- After every local change (marking attendance, editing a subject or timetable entry, importing, restoring a backup, changing settings), the updated data is pushed to Firestore in the background, debounced by ~1.2s and tagged with an `updatedAt` timestamp. Network or offline errors never block the UI — the header/settings sync badge reflects the current state (`Syncing…`, `Synced`, `Offline`, or `Sync paused`).
+- "Clear local data" in Settings only clears this device's IndexedDB; it does not touch the Firestore copy, so signing out and back in (or opening the app elsewhere) restores it.
+
+**Setup**
+
+1. In the Firebase console, open **Firestore Database** and create a database (production mode).
+2. Set security rules so each user can only read/write their own document:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+   These are also saved in [`firestore.rules`](./firestore.rules) — deploy with `firebase deploy --only firestore:rules` if you use the Firebase CLI, or paste them into the console's Rules tab.
+3. No extra `VITE_FIREBASE_*` variables are needed beyond what Google sign-in already uses.
+
+## Gemini timetable import
+
+The app uses the official `@google/generative-ai` SDK and accepts PDF, PNG, JPG/JPEG, and WEBP files (up to 15 MB). It asks Gemini for strict timetable JSON, presents every entry for editing, and saves only after confirmation.
+
+## Gemini attendance import
+
+Reachable from the Attendance page and from Settings → Your data. It takes a plain `.txt` file (up to 2 MB) of attendance copied out of some other system. No layout is assumed: the prompt tells Gemini the structure is unknown and asks it to work out the shape of the file itself, so tuples, CSV, tables, markdown or prose all work. Gemini returns the subject, an ISO date, a `present`/`absent`/`unknown` status, a confidence flag and the source line for each record.
+
+The flow is Upload → Analysing → Review → Importing → Complete, and nothing is written until you confirm:
+
+- Detected subjects are matched against your existing ones by name, code, acronym (`COA` finds "Computer Organisation and Architecture"), then containment/word overlap. Anything unmatched is shown as such and defaults to creating a new subject — never silently dropped. Each subject can be re-pointed, created, or skipped from the review screen.
+- Rows with a missing or impossible date, an unreadable status, or low model confidence are flagged as needing review and excluded until you fix them inline.
+- Days already recorded with the same status are skipped as duplicates. Days recorded with a *different* status are shown as clashes and left alone unless you explicitly choose to let the file win, in which case the existing record is updated in place rather than duplicated.
+- Imported marks use `sessionId: 'manual'`, so they appear on the Attendance page exactly as a tap would and count toward every percentage.
+- The write happens in one IndexedDB transaction over `subjects` and `attendance` only — the timetable is never opened, and a failure rolls the whole import back.
+
+For a static GitHub Pages deployment, any `VITE_GEMINI_API_KEY` is inherently visible in the browser bundle. Prefer a small authenticated serverless proxy for production if possible. If you deliberately use a browser key, restrict it in Google Cloud by HTTP referrer (your GitHub Pages domain) and Gemini API, set quotas, and rotate/revoke it when needed. Never put the key in source, UI, backup files, or logs.
+
+## GitHub Pages deployment
+
+1. Push this project to a repository named `self-attendance` (or adjust `base` in `vite.config.ts` to `/<your-repository>/`).
+2. Add all `VITE_*` values as GitHub repository secrets or build-time environment variables. Do not commit `.env.local`.
+3. Add this workflow as `.github/workflows/deploy.yml`, or deploy `dist` from your CI:
+
+```yaml
+name: Deploy static site
+on: { push: { branches: [main] }, workflow_dispatch: {} }
+permissions: { contents: read, pages: write, id-token: write }
+jobs:
+  deploy:
+    environment: { name: github-pages, url: ${{ steps.deployment.outputs.page_url }} }
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+      - id: deployment
+        uses: actions/deploy-pages@v4
 ```
 
-### Running Automated Tests
-The repository includes a comprehensive unit and characterization test suite built on Vitest, JSDOM, and fake-indexeddb:
-```bash
-# Run all automated tests
-npm test
+4. In GitHub **Settings → Pages**, choose **GitHub Actions** as the source. Ensure HTTPS is enabled. The PWA service worker supplies an offline application shell; GitHub Pages serves the Vite entry for the app route.
 
-# Run a specific test suite
-npm test bug004
-```
+## IndexedDB schema
 
-### Building for Production
-```bash
-# Run TypeScript typecheck and Vite production build
-npm run build
-```
+Database: `SelfAttendance`.
 
----
+| Store | Key | Scope / purpose |
+|---|---|---|
+| `users` | `uid` | Cached Firebase profile identity |
+| `subjects` | `id` | `uid` indexed; subject targets and metadata |
+| `attendance` | `id` | `uid` and `[uid,date]` indexed; one record per subject/date/session |
+| `timetable` | `id` | `uid` indexed; weekly class sessions |
+| `settings` | `uid` | Theme and default target |
 
-## Calculation Rules
+Every persisted user record has a Firebase UID. Logout does not clear records; signing in as another account queries a separate UID dataset. Writes occur immediately after attendance actions.
 
-All attendance math in `src/math.ts` uses exact integer arithmetic to avoid floating-point inaccuracies:
+## Backup and restore format
 
-- **Current Attendance Percentage**:
-  $$\text{pct} = \frac{100 \times \text{present}}{\text{present} + \text{absent}}$$
-  *(Displayed rounded to 1 decimal place; compares exact integer $100 \times \text{present} \ge T \times \text{total}$)*
-- **Safe Misses (Bunk)**:
-  Only when at or above target $T$:
-  $$\text{bunk} = \left\lfloor \frac{100 \times \text{present} - T \times \text{total}}{T} \right\rfloor$$
-- **Required Consecutive Attendances**:
-  When below target $T$ ($T < 100$):
-  $$\text{required} = \left\lceil \frac{T \times \text{total} - 100 \times \text{present}}{100 - T} \right\rceil$$
-- **Target 100% Unreachable Sentinel**:
-  If target $T = 100$ and $\text{absent} > 0$, `required()` returns sentinel `-1` (displayed as "Target 100% unreachable", never rendering `Infinity` or `NaN`).
-- **Zero Classes Held**:
-  When $\text{total} = 0$, the UI displays a neutral "No classes yet" badge rather than a false risk state or "Attend next 0".
-- **Unmarked Status**:
-  Unmarked classes and cancelled classes are excluded from total counts to prevent distortion.
+**Backup Data** downloads a human-readable `.txt` report followed by a `STRUCTURED DATA (do not edit)` JSON section. The JSON contains backup version, creation timestamp, source account marker, subjects, attendance records, timetable entries, and settings. The parser validates that section before it changes IndexedDB. Restore previews record counts and offers **Merge** (ID-based upsert) or **Replace** (clears only the signed-in user's local dataset, then restores). Existing records remain untouched until confirmation.
 
----
+## Calculation rules
 
-## Cloud Sync (Firestore) & Data Safety
+- Current percentage: `present / (present + absent) × 100`.
+- Safe skips, only when at/above target: `floor(present / targetFraction − total)`.
+- Required consecutive presences, below target: `ceil((targetFraction × total − present) / (1 − targetFraction))`.
 
-The app implements a multi-tier persistence and safety architecture:
+Unmarked entries are excluded. This avoids misleading attendance advice.
 
-- **Local-First Source of Truth**: All mutations are written immediately to IndexedDB on device. Reads never wait on the network.
-- **Reconciliation Gate (`reconciled:{uid}`)**: Pushes to cloud (`pushToCloud`) no-op unless a verified cloud pull or local seeding has succeeded for that UID. If the initial cloud pull fails or the device is offline during login, the app displays a clear retry prompt and blocks cloud pushes to prevent overwriting cloud docs with empty local state.
-- **Per-UID Dirty State Tracking**: Every local mutation marks the UID as `dirty`. On login, if local dirty state exists, local data is preserved and pushed rather than wiped by the cloud copy.
-- **Lifecycle Flush**: Pending debounced cloud pushes are automatically flushed on `logout`, `pagehide`, and `visibilitychange: hidden`.
-- **Automatic Retry with Exponential Backoff**: Network sync errors retry automatically with exponential backoff (1s, 2s, 4s...) and listen to the browser's `online` event to resume syncing when connectivity is restored.
-- **Offline Guard**: Cloud push operations verify `navigator.onLine` and transition immediately to `'offline'` without hanging on server acknowledgments.
-- **Account Isolation**: Signing out immediately unmounts previous user data and resets navigation to Home, preventing cross-account data leaks.
+## Privacy
 
----
-
-## AI Import Behavior
-
-### Timetable Import (PDF / Images)
-- Accepts PDF, PNG, JPG, JPEG, and WEBP files (up to 15 MB).
-- Sends the file to Google's Gemini model with schema validation.
-- Normalizes day names ("Mon" $\rightarrow$ "Monday") and times ("9:00" $\rightarrow$ "09:00").
-- Flags unparseable entries and reports imported vs. skipped row counts upon commit.
-- Stacks rows into a responsive 2-line card layout on mobile screens ($\le 560\text{px}$) so start and end times remain fully visible and editable.
-
-### Attendance Text Import (.txt)
-- Accepts unstructured plain text exports (up to 2 MB).
-- Gemini extracts subject, ISO date, and attendance status.
-- **Candidate Scoring & Tie-Breaking**: Matches existing subjects by exact name, code, acronym, and word overlap. If candidates are tied or ambiguous, the match defaults to `none`, requiring explicit user selection.
-- **Low Confidence Excluded by Default**: Rows flagged with low model confidence default to `include: false` and are grouped under "Needs review".
-- **Row Cap Protection**: For files exceeding 300 rows, rows beyond the cap are not imported unless the user explicitly checks the preview limit opt-in checkbox.
-- **Same-Day Classes Toggle**: Supports a toggle ("Treat repeated rows on one day as separate classes") to correctly handle multi-hour lectures or labs without dropping same-day records.
-- **In-Place Overwrite**: When "Replace with file" is chosen for an existing attendance date, the existing record ID and timetable `sessionId` are preserved in place.
-
----
-
-## Backup & Restore Format
-
-- **Local Date Filenames**: Backup files are downloaded as `self-attendance-backup-YYYY-MM-DD.txt` using the device's local calendar date rather than UTC.
-- **Delayed Object URL Revocation**: Download blob URLs are revoked with a 10-second delay to ensure downloads are not aborted by browsers.
-- **CRLF & UTF-8 BOM Normalization**: `parseBackup` strips UTF-8 BOM markers and normalizes Windows CRLF line endings.
-- **Strict Pre-Transaction Validation**: Validates all subject, attendance, timetable, and settings records before opening an IndexedDB transaction. Any corrupt or malformed payload aborts the transaction without leaving partial commits.
-- **Merge Timestamp Checks**: When restoring in "Merge" mode, records are only updated if the backup record's `updatedAt` is newer than the local record's `updatedAt`.
-- **Settings Restore Opt-In**: Merge restore preserves the user's current settings unless explicitly opted into restoring settings from the file.
-
----
-
-## Privacy Notice
-
-- **Local-first by default**: Attendance, subjects, timetables, and settings are stored locally on your device in IndexedDB and work completely offline.
-- **Cloud synchronization**: When signed in with Google, your data is mirrored to a private Firestore document (`users/{uid}`) to enable cross-device sync.
-- **AI import processing**: If you choose to import a timetable or attendance file, only that specific chosen file is sent to Google's Gemini API for analysis. Files are processed in memory and never retained by the app.
-
----
-
-## Deployment
-
-### Firebase Hosting & Firestore Rules
-The repository includes [`firebase.json`](./firebase.json) and [`firestore.rules`](./firestore.rules):
-```bash
-# 1. Build the production application
-npm run build
-
-# 2. Deploy Firestore security rules and static hosting
-firebase deploy --only firestore:rules,hosting
-```
-
-### GitHub Pages
-Deployments via GitHub Actions use `.github/workflows/deploy.yml` with `npm test` running prior to the build step.
+Attendance, subject, timetable, settings, and backups remain on the current device. Firebase is not an attendance database. AI import sends only the file selected for extraction, needs internet, and never automatically stores the upload itself.
