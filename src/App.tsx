@@ -270,7 +270,8 @@ function AppContent() {
     buzz();
     const dayOfWeek=DAYS[(new Date(date+'T12:00').getDay()+6)%7];
     const defaultEntry=table.find(t=>t.day===dayOfWeek&&t.subjectId===subjectId);
-    const resolvedSessionId=sessionId==='manual'&&defaultEntry?defaultEntry.id:sessionId;
+    const timetableEntry=table.find(t=>t.id===sessionId)||defaultEntry;
+    const resolvedSessionId=timetableEntry?timetableEntry.id:sessionId;
     const old=records.find(r=>r.subjectId===subjectId&&r.date===date&&r.sessionId===resolvedSessionId)
       ?? records.find(r=>r.subjectId===subjectId&&r.date===date&&r.sessionId===sessionId)
       ?? (sessionId==='manual'?records.find(r=>r.subjectId===subjectId&&r.date===date):undefined);
@@ -284,7 +285,20 @@ function AppContent() {
       }
       return;
     }
-    const item:Attendance={id:old?.id??id(),uid,subjectId,date,sessionId:targetSessionId,status,updatedAt:new Date().toISOString()};
+    const item:Attendance={
+      id:old?.id??id(),
+      uid,
+      subjectId,
+      date,
+      sessionId:targetSessionId,
+      timetableId: timetableEntry?.id,
+      startTime: old?.startTime ?? timetableEntry?.startTime,
+      endTime: old?.endTime ?? timetableEntry?.endTime,
+      room: old?.room ?? timetableEntry?.room,
+      isExtra: old?.isExtra ?? (!timetableEntry),
+      status,
+      updatedAt:new Date().toISOString()
+    };
     await put('attendance',item);await reload();
     pendingUndo.current={subjectId,date,sessionId:targetSessionId,prev:old};
     flash(`Marked ${status}`,true);
@@ -312,8 +326,8 @@ function AppContent() {
  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')}><img src={user.photoURL??''} alt="Profile"/></button></div></header>
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
- {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onAdd={()=>{setEditEntry(blankEntry(uid));setModal('entry')}} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{await flushPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
- </main><FloatingNav activeKey={page} onNavigate={navigate} onOpenMark={()=>setModal('quick-mark')}/><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
+ {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{await flushPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
+ </main><FloatingNav activeKey={page} onNavigate={navigate}/><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
  {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Clear local data?</h2><p>This removes attendance, subjects and timetable for this account from this device only. Download a backup first. Your Firestore backup is left untouched, so signing out and back in — or opening the app on another device — restores it.</p>
  <button className="danger full" onClick={async()=>{await clearUser(uid);await reload(false);setModal(null);flash('Local data cleared')}}>Clear all data</button></Modal>}
  {modal==='excel-export'&&<ExcelExportModal subjects={subjects} records={records} table={table} currentYear={new Date().getFullYear()} currentMonth={new Date().getMonth()} studentName={user.displayName??''} studentEmail={user.email??''} onSuccess={(fn,cnt)=>flash(`Exported ${cnt} records to ${fn}`)} onClose={()=>setModal(null)}/>}
@@ -530,7 +544,7 @@ function DayAttendance({subjects,records,table,day,onMark}:{subjects:Subject[];r
         </div>
       </article>;
     })}
-    {scheduled.length>0&&otherSubjects.length>0&&<div className="section-title" style={{marginTop:16,marginBottom:4}}><div><h3 style={{fontSize:14,color:'var(--muted)',fontWeight:600}}>Other subjects</h3></div></div>}
+    {scheduled.length>0&&otherSubjects.length>0&&<div className="section-title" style={{marginTop:16,marginBottom:4}}><div><h3 style={{fontSize:14,color:'var(--muted)',fontWeight:600,textTransform:'uppercase'}}>Extra Classes</h3></div></div>}
     {(scheduled.length===0?subjects:otherSubjects).map(s=>{
       const record=records.find(r=>r.subjectId===s.id&&r.date===day);
       const status=record?.status;
@@ -542,6 +556,9 @@ function DayAttendance({subjects,records,table,day,onMark}:{subjects:Subject[];r
           <small>{status&&status!=='unmarked'?`Marked ${status}`:'Not marked'}</small>
         </div>
         <div className="three">
+          <button className={status==='present'?'picked present':''} onClick={()=>onMark(s.id,'present',day,targetSessionId)}>Present</button>
+          <button className={status==='absent'?'picked absent':''} onClick={()=>onMark(s.id,'absent',day,targetSessionId)}>Absent</button>
+          <button className={status==='cancelled'?'picked cancelled':''} onClick={()=>onMark(s.id,'cancelled',day,targetSessionId)}>Cancelled</button>
           <button className={status==='unmarked'?'picked':''} onClick={()=>onMark(s.id,'unmarked',day,targetSessionId)}>Clear</button>
         </div>
       </article>;
@@ -580,7 +597,7 @@ function CalendarPage({subjects,records,table,onMark,onImport,onOpenMonthly}:{su
   </>;
 }
 const blankEntry=(uid:string):TimetableEntry=>({id:id(),uid,day:'Monday',subjectId:'',subject:'',startTime:'09:00',endTime:'10:00',room:'',teacher:'',type:'Lecture',notes:'',order:0});
-export function TimetablePage({subjects,table,onAdd,onEdit,onDelete,onImport}:{subjects:Subject[],table:TimetableEntry[],onAdd:()=>void,onEdit:(e:TimetableEntry)=>void,onDelete:(e:TimetableEntry)=>void,onImport:()=>void}){const [day,setDay]=useState(todayDay());const entries=table.filter(t=>t.day===day).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <><div className="toolbar"><div className="day-tabs">{DAYS.map(d=><button key={d} className={d===day?'active':''} onClick={()=>setDay(d)}>{d.slice(0,3)}</button>)}</div><button className="primary" onClick={onAdd}><Plus/> Add class</button></div><div className="import-banner"><Sparkles/><div><b>Import timetable with AI</b><span>Upload a PDF or image, then review every detected class.</span></div><button onClick={onImport}>Import</button></div>{!entries.length?<Empty title={`No classes on ${day}`} text="Build your weekly plan manually or import a timetable." action="Import timetable" onAction={onImport}/>:<div className="timeline">{entries.map(e=><article className="card entry" key={e.id}><time>{e.startTime}<small>{e.endTime}</small></time>{(()=>{const sub=subjects.find(s=>s.id===e.subjectId);const displayName=sub?.name||e.subject;return <div><h3>{displayName}</h3><p><span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'} {e.teacher&&`· ${e.teacher}`}</p><small>{e.notes}</small></div>})()}<button className="icon" onClick={()=>onEdit(e)} aria-label="Edit class">•••</button><button className="icon danger-text" onClick={()=>onDelete(e)} aria-label="Delete class"><Trash2/></button></article>)}</div>}</>}
+export function TimetablePage({subjects,table,onEdit,onDelete,onImport}:{subjects:Subject[],table:TimetableEntry[],onEdit:(e:TimetableEntry)=>void,onDelete:(e:TimetableEntry)=>void,onImport:()=>void}){const [day,setDay]=useState(todayDay());const entries=table.filter(t=>t.day===day).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <><div className="toolbar"><div className="view-segmented-control" role="tablist">{DAYS.map(d=><button type="button" role="tab" key={d} className={`view-tab-btn ${d===day?'active':''}`} onClick={()=>setDay(d)}><span>{d.slice(0,3)}</span></button>)}</div></div><div className="import-banner"><Sparkles/><div><b>Update Timetable with AI</b><span>Upload a PDF or image to replace your recurring timetable.</span></div><button onClick={onImport}>Update Timetable</button></div>{!entries.length?<Empty title={`No classes on ${day}`} text="Update your timetable to see scheduled classes." action="Update Timetable" onAction={onImport}/>:<div className="timeline">{entries.map(e=><article className="card entry" key={e.id}><time>{e.startTime}<small>{e.endTime}</small></time>{(()=>{const sub=subjects.find(s=>s.id===e.subjectId);const displayName=sub?.name||e.subject;return <div><h3>{displayName}</h3><p><span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'} {e.teacher&&`· ${e.teacher}`}</p><small>{e.notes}</small></div>})()}<button className="icon" onClick={()=>onEdit(e)} aria-label="Edit class">•••</button><button className="icon danger-text" onClick={()=>onDelete(e)} aria-label="Delete class"><Trash2/></button></article>)}</div>}</>}
 function Statistics({subjects,records,table,stats,restoring,onExportExcel}:{subjects:Subject[],records:Attendance[],table:TimetableEntry[],stats:ReturnType<typeof overall>,restoring:boolean,onExportExcel:()=>void}){
   const [tab, setTab] = useState<'overview' | 'monthly'>('overview');
   const chart=subjects.map(s=>({id:s.id,name:s.code||s.name.slice(0,8),value:+subjectStats(s,records).pct.toFixed(0),fill:s.color}));
@@ -802,6 +819,7 @@ function EntryForm({entry,subjects,onSave,onClose}:{entry:TimetableEntry,subject
 
 function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:string,subjects:Subject[],table:TimetableEntry[],defaultTarget:number,onSaved:()=>void,onClose:()=>void}){
   const [file,setFile]=useState<File|null>(null);
+  const [defaultRoom,setDefaultRoom]=useState('');
   const [items,setItems]=useState<DetectedEntry[]>([]);
   const [busy,setBusy]=useState(false);
   const [busyCommit,setBusyCommit]=useState(false);
@@ -819,7 +837,7 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
     try{
       const res = await extractTimetable(f);
       if(reqIdRef.current === currentReq){
-        setItems(res);
+        setItems(res.map(x => ({ ...x, room: x.room || defaultRoom })));
       }
     }catch(e){
       if(reqIdRef.current === currentReq){
@@ -878,7 +896,7 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
         seen.add(key);
         entries.push({...blankEntry(uid),id:id(),uid,day,subjectId:s.id,subject:name,startTime:x.startTime,endTime:x.endTime,room,teacher,type:x.type||'Lecture',notes:x.notes??'',order:0});
       }
-      await importTimetableData(saves,entries);
+      await importTimetableData(uid,saves,entries);
       setSummary({imported:entries.length,skipped});
       onSaved();
     }catch(e){
@@ -898,6 +916,11 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
       </>
     ) : (
       <>
+        <div style={{marginBottom: 16}}>
+          <label>Default Classroom (Optional)
+            <input type="text" placeholder="e.g. 215" value={defaultRoom} onChange={e=>setDefaultRoom(e.target.value)}/>
+          </label>
+        </div>
         <label className="drop"><CloudUpload/><b>{file?file.name:'Upload timetable'}</b><span>PDF, PNG, JPG, JPEG or WEBP · max 15 MB</span><input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={e=>choose(e.target.files?.[0])}/></label>
         {busy&&<div className="processing"><ThinkingOrb state="searching" size={20} aria-label="Working"/> Reading your timetable…</div>}
         {error&&<div className="error">{error}</div>}

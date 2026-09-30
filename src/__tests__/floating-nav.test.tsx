@@ -8,26 +8,26 @@ describe('Floating Glassmorphism Mobile Navigation', () => {
     cleanup();
   });
 
-  it('renders exactly five navigation items: Home, Subjects, Mark, Timetable, Reports', () => {
+  it('renders exactly five navigation items: Home, Subjects, Calendar, Timetable, Reports', () => {
     render(
       <FloatingNav
         activeKey="home"
         onNavigate={() => {}}
-        onOpenMark={() => {}}
+        
       />
     );
 
     // Verify all 5 items by accessible roles and names
     expect(screen.getByRole('button', { name: /Home Dashboard/i })).toBeDefined();
     expect(screen.getByRole('button', { name: /Subjects/i })).toBeDefined();
-    expect(screen.getByRole('button', { name: /Mark attendance for today/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /Calendar/i })).toBeDefined();
     expect(screen.getByRole('button', { name: /Timetable/i })).toBeDefined();
     expect(screen.getByRole('button', { name: /Reports and Analytics/i })).toBeDefined();
 
     // Verify text labels
     expect(screen.getByText('Home')).toBeDefined();
     expect(screen.getByText('Subjects')).toBeDefined();
-    expect(screen.getByText('Mark')).toBeDefined();
+    expect(screen.getByText('Calendar')).toBeDefined();
     expect(screen.getByText('Timetable')).toBeDefined();
     expect(screen.getByText('Reports')).toBeDefined();
   });
@@ -37,7 +37,7 @@ describe('Floating Glassmorphism Mobile Navigation', () => {
       <FloatingNav
         activeKey="home"
         onNavigate={() => {}}
-        onOpenMark={() => {}}
+        
       />
     );
 
@@ -50,7 +50,7 @@ describe('Floating Glassmorphism Mobile Navigation', () => {
       <FloatingNav
         activeKey="statistics"
         onNavigate={() => {}}
-        onOpenMark={() => {}}
+        
       />
     );
 
@@ -66,7 +66,7 @@ describe('Floating Glassmorphism Mobile Navigation', () => {
       <FloatingNav
         activeKey="home"
         onNavigate={onNavigate}
-        onOpenMark={() => {}}
+        
       />
     );
 
@@ -80,18 +80,17 @@ describe('Floating Glassmorphism Mobile Navigation', () => {
     expect(onNavigate).toHaveBeenCalledWith('statistics');
   });
 
-  it('triggers onOpenMark when central Mark button is pressed', () => {
-    const onOpenMark = vi.fn();
+  it('triggers onNavigate when calendar is tapped', () => {
+    const onNavigate = vi.fn();
     render(
       <FloatingNav
         activeKey="home"
-        onNavigate={() => {}}
-        onOpenMark={onOpenMark}
+        onNavigate={onNavigate}
       />
     );
 
-    const markBtn = screen.getByRole('button', { name: /Mark attendance for today/i });
-    fireEvent.click(markBtn);
-    expect(onOpenMark).toHaveBeenCalledTimes(1);
+    const calendarBtn = screen.getByRole('button', { name: /Calendar/i });
+    fireEvent.click(calendarBtn);
+    expect(onNavigate).toHaveBeenCalledWith('calendar');
   });
 });

@@ -428,8 +428,9 @@ export function MonthlyAttendance({
                     <div className="date-class-info">
                       <b>{sub?.name || 'Unknown Subject'}</b>
                       <small className="muted">
-                        {tableEntry ? `${tableEntry.startTime} - ${tableEntry.endTime}` : 'Time not specified'}
-                        {tableEntry?.room ? ` · ${tableEntry.room}` : ''}
+                        {r.startTime ? `${r.startTime} - ${r.endTime}` : (tableEntry ? `${tableEntry.startTime} - ${tableEntry.endTime}` : 'Time not specified')}
+                        {r.room ? ` · ${r.room}` : (tableEntry?.room ? ` · ${tableEntry.room}` : '')}
+                        {r.isExtra ? ' (Extra Class)' : ''}
                       </small>
                     </div>
                     <span className={`status-pill pill-${r.status}`}>

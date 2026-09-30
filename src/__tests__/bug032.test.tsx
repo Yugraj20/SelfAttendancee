@@ -45,7 +45,6 @@ describe('BUG-032: Aria-labels for icon-only buttons and photoURL guard', () => 
       <TimetablePage
         subjects={[mockSubject]}
         table={[mockEntry]}
-        onAdd={() => {}}
         onEdit={() => {}}
         onDelete={() => {}}
         onImport={() => {}}

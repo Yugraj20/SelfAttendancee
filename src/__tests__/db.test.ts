@@ -106,7 +106,7 @@ describe('db.ts IndexedDB operations (via fake-indexeddb)', () => {
     const att = sampleAttendance({ uid, id: 'att-import', subjectId: 'sub-import' });
     const tt = sampleTimetable({ uid, id: 'tt-import', subjectId: 'sub-import' });
 
-    await importTimetableData([sub], [tt]);
+    await importTimetableData(uid, [sub], [tt]);
     await importAttendanceData([], [att]);
 
     const data = await userData(uid);

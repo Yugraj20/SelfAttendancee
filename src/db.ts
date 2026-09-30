@@ -275,7 +275,7 @@ export async function restore(
     throw err;
   }
 }
-export async function importTimetableData(subjectsToCreateOrUpdate: Subject[], timetableToInsert: TimetableEntry[]) { const db = await dbPromise; const tx = db.transaction(['subjects', 'timetable'], 'readwrite'); for (const s of subjectsToCreateOrUpdate) await tx.objectStore('subjects').put(s); for (const t of timetableToInsert) await tx.objectStore('timetable').put(t); await tx.done; }
+export async function importTimetableData(uid: string, subjectsToCreateOrUpdate: Subject[], timetableToInsert: TimetableEntry[]) { const db = await dbPromise; const tx = db.transaction(['subjects', 'timetable'], 'readwrite'); const timetableStore = tx.objectStore('timetable'); const oldKeys = await timetableStore.index('by-uid').getAllKeys(uid); await Promise.all(oldKeys.map(k => timetableStore.delete(k))); for (const s of subjectsToCreateOrUpdate) await tx.objectStore('subjects').put(s); for (const t of timetableToInsert) await timetableStore.put(t); await tx.done; }
 // Attendance import writes subjects and attendance in one transaction and never opens the
 // timetable store, so a failure rolls the whole import back rather than leaving half of it behind.
 export async function importAttendanceData(subjectsToCreate: Subject[], recordsToWrite: Attendance[]) { const db = await dbPromise; const tx = db.transaction(['subjects', 'attendance'], 'readwrite'); for (const s of subjectsToCreate) await tx.objectStore('subjects').put(s); for (const a of recordsToWrite) await tx.objectStore('attendance').put(a); await tx.done; }

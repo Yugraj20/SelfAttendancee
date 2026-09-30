@@ -3,16 +3,13 @@ import { Home, BookOpen, Plus, Calendar, BarChart3 } from 'lucide-react';
 
 export type NavItemKey = 'home' | 'subjects' | 'mark' | 'timetable' | 'reports';
 
-interface FloatingNavProps {
-  activeKey: string;
-  onNavigate: (key: 'home' | 'subjects' | 'timetable' | 'statistics') => void;
-  onOpenMark: () => void;
-}
+interface FloatingNavProps { activeKey: string; onNavigate: (key: 'home' | 'subjects' | 'calendar' | 'timetable' | 'statistics') => void; }
 
-export function FloatingNav({ activeKey, onNavigate, onOpenMark }: FloatingNavProps) {
+export function FloatingNav({ activeKey, onNavigate }: FloatingNavProps) {
   // Map page names to active state
   const isHomeActive = activeKey === 'home';
   const isSubjectsActive = activeKey === 'subjects';
+  const isCalendarActive = activeKey === 'calendar';
   const isTimetableActive = activeKey === 'timetable';
   const isReportsActive = activeKey === 'statistics';
 
@@ -46,20 +43,19 @@ export function FloatingNav({ activeKey, onNavigate, onOpenMark }: FloatingNavPr
         <span className="dock-label">Subjects</span>
       </button>
 
-      {/* 3. Central Mark Button */}
-      <div className="dock-center-container">
-        <button
-          type="button"
-          className="dock-mark-button"
-          onClick={onOpenMark}
-          aria-label="Mark attendance for today"
-        >
-          <div className="mark-button-inner">
-            <Plus size={24} strokeWidth={2.75} />
-          </div>
-          <span className="dock-label mark-label">Mark</span>
-        </button>
-      </div>
+      {/* 3. Calendar */}
+      <button
+        type="button"
+        className={`dock-item ${isCalendarActive ? 'active' : ''}`}
+        onClick={() => onNavigate('calendar')}
+        aria-label="Calendar"
+        aria-current={isCalendarActive ? 'page' : undefined}
+      >
+        <div className="dock-icon-wrapper">
+          <Calendar size={20} strokeWidth={isCalendarActive ? 2.5 : 2} />
+        </div>
+        <span className="dock-label">Calendar</span>
+      </button>
 
       {/* 4. Timetable */}
       <button

@@ -1,7 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { DetectedAttendance, DetectedEntry, ParsedAttendance } from './types';
 
-const prompt = `Analyze this timetable only. Extract every instructional class as strict JSON, no markdown: {"timetable":[{"day":"Monday","startTime":"09:00","endTime":"10:00","subject":"","subjectCode":"","teacher":"","room":"","type":"Lecture","notes":""}]}. Days must be English weekday names. Use 24-hour HH:MM. Do not invent anything; use empty strings when unreadable. Include labs separately. Ignore breaks unless useful in notes.`;
+const prompt = `Analyze this timetable only. Extract every instructional class as strict JSON, no markdown: {"timetable":[{"day":"Monday","startTime":"09:00","endTime":"10:00","subject":"","subjectCode":"","teacher":"","room":"","type":"Lecture","notes":""}]}. Days must be English weekday names. Use 24-hour HH:MM. Do not invent anything; use empty strings when unreadable. Include labs separately. Ignore breaks unless useful in notes.
+CRITICAL EXTRACTION RULES:
+1. CLASSROOMS: If the timetable cell contains a number immediately associated with the scheduled subject (e.g. "215 DBMS"), interpret that number as the room ("215") and the rest as the subject ("DBMS"). Do not put the room number inside the subject name.
+2. LABS: If a class includes "Lab" (e.g. "305 Python Lab" or "Python Lab 305"), ensure the subject is "Python Lab" and the room is "305". Do not remove "Lab" from the subject name.`;
 
 const DAY_MAP: Record<string, string> = {
   sunday: 'Sunday', sun: 'Sunday',
