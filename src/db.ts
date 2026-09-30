@@ -11,13 +11,15 @@ interface AttendanceDB extends DBSchema {
 const DB_NAME = 'SelfAttendance';
 const DB_VERSION = 1;
 function openAttendanceDB() {
-  return openDB<AttendanceDB>(DB_NAME, DB_VERSION, { upgrade(db) {
-    db.createObjectStore('users', { keyPath: 'uid' });
-    const subjects = db.createObjectStore('subjects', { keyPath: 'id' }); subjects.createIndex('by-uid', 'uid');
-    const attendance = db.createObjectStore('attendance', { keyPath: 'id' }); attendance.createIndex('by-uid', 'uid'); attendance.createIndex('by-user-date', ['uid', 'date']);
-    const timetable = db.createObjectStore('timetable', { keyPath: 'id' }); timetable.createIndex('by-uid', 'uid');
-    db.createObjectStore('settings', { keyPath: 'uid' });
-  }});
+  return openDB<AttendanceDB>(DB_NAME, DB_VERSION, {
+    upgrade(db) {
+      db.createObjectStore('users', { keyPath: 'uid' });
+      const subjects = db.createObjectStore('subjects', { keyPath: 'id' }); subjects.createIndex('by-uid', 'uid');
+      const attendance = db.createObjectStore('attendance', { keyPath: 'id' }); attendance.createIndex('by-uid', 'uid'); attendance.createIndex('by-user-date', ['uid', 'date']);
+      const timetable = db.createObjectStore('timetable', { keyPath: 'id' }); timetable.createIndex('by-uid', 'uid');
+      db.createObjectStore('settings', { keyPath: 'uid' });
+    }
+  });
 }
 let dbPromise = openAttendanceDB();
 export function getDb() { return dbPromise; }
@@ -38,10 +40,10 @@ export const id = (): string => {
   }
   return Math.random().toString(36).slice(2, 11) + Math.random().toString(36).slice(2, 11);
 };
-export async function userData(uid: string) { const db = await dbPromise; const [subjects, attendance, timetable, settings] = await Promise.all([db.getAllFromIndex('subjects','by-uid',uid), db.getAllFromIndex('attendance','by-uid',uid), db.getAllFromIndex('timetable','by-uid',uid), db.get('settings',uid)]); return { subjects, attendance, timetable, settings: settings ?? { uid, defaultTarget: 75, theme: 'system' as const, onboardingComplete: false } }; }
-export async function put(store: 'subjects'|'attendance'|'timetable'|'settings'|'users', value: Subject|Attendance|TimetableEntry|Settings|UserRecord) { return (await dbPromise).put(store as never, value as never); }
-export async function remove(store: 'subjects'|'attendance'|'timetable', key: string) { return (await dbPromise).delete(store as never, key); }
-export async function clearUser(uid: string) { const db = await dbPromise; const tx = db.transaction(['subjects','attendance','timetable','settings','users'], 'readwrite'); for (const name of ['subjects','attendance','timetable'] as const) { const store = tx.objectStore(name); const keys = await store.index('by-uid').getAllKeys(uid); await Promise.all(keys.map(k => store.delete(k))); } await tx.objectStore('settings').delete(uid); await tx.objectStore('users').delete(`reconciled:${uid}`); await tx.objectStore('users').delete(`dirty:${uid}`); await tx.done; }
+export async function userData(uid: string) { const db = await dbPromise; const [subjects, attendance, timetable, settings] = await Promise.all([db.getAllFromIndex('subjects', 'by-uid', uid), db.getAllFromIndex('attendance', 'by-uid', uid), db.getAllFromIndex('timetable', 'by-uid', uid), db.get('settings', uid)]); return { subjects, attendance, timetable, settings: settings ?? { uid, defaultTarget: 75, theme: 'system' as const, onboardingComplete: false } }; }
+export async function put(store: 'subjects' | 'attendance' | 'timetable' | 'settings' | 'users', value: Subject | Attendance | TimetableEntry | Settings | UserRecord) { return (await dbPromise).put(store as never, value as never); }
+export async function remove(store: 'subjects' | 'attendance' | 'timetable', key: string) { return (await dbPromise).delete(store as never, key); }
+export async function clearUser(uid: string) { const db = await dbPromise; const tx = db.transaction(['subjects', 'attendance', 'timetable', 'settings', 'users'], 'readwrite'); for (const name of ['subjects', 'attendance', 'timetable'] as const) { const store = tx.objectStore(name); const keys = await store.index('by-uid').getAllKeys(uid); await Promise.all(keys.map(k => store.delete(k))); } await tx.objectStore('settings').delete(uid); await tx.objectStore('users').delete(`reconciled:${uid}`); await tx.objectStore('users').delete(`dirty:${uid}`); await tx.done; }
 const VALID_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 const HH_MM_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -69,8 +71,8 @@ export function validateRestoreData(data: unknown): { subjects: Subject[]; atten
     if (typeof a.date !== 'string' || !ISO_DATE_REGEX.test(a.date) || isNaN(Date.parse(a.date))) {
       throw new Error(`Invalid attendance date format at index ${i}: must be YYYY-MM-DD`);
     }
-    if (a.status !== 'present' && a.status !== 'absent' && a.status !== 'unmarked') {
-      throw new Error(`Invalid attendance status at index ${i}: must be present, absent, or unmarked`);
+    if (a.status !== 'present' && a.status !== 'absent' && a.status !== 'unmarked' && a.status !== 'cancelled') {
+      throw new Error(`Invalid attendance status at index ${i}: must be present, absent, unmarked, or cancelled`);
     }
   }
   for (let i = 0; i < d.timetable.length; i++) {
@@ -269,14 +271,14 @@ export async function restore(
     await tx.done;
     return { added, updated, skipped };
   } catch (err) {
-    try { tx.abort(); } catch {}
+    try { tx.abort(); } catch { }
     throw err;
   }
 }
-export async function importTimetableData(subjectsToCreateOrUpdate: Subject[], timetableToInsert: TimetableEntry[]) { const db = await dbPromise; const tx = db.transaction(['subjects','timetable'], 'readwrite'); for (const s of subjectsToCreateOrUpdate) await tx.objectStore('subjects').put(s); for (const t of timetableToInsert) await tx.objectStore('timetable').put(t); await tx.done; }
+export async function importTimetableData(subjectsToCreateOrUpdate: Subject[], timetableToInsert: TimetableEntry[]) { const db = await dbPromise; const tx = db.transaction(['subjects', 'timetable'], 'readwrite'); for (const s of subjectsToCreateOrUpdate) await tx.objectStore('subjects').put(s); for (const t of timetableToInsert) await tx.objectStore('timetable').put(t); await tx.done; }
 // Attendance import writes subjects and attendance in one transaction and never opens the
 // timetable store, so a failure rolls the whole import back rather than leaving half of it behind.
-export async function importAttendanceData(subjectsToCreate: Subject[], recordsToWrite: Attendance[]) { const db = await dbPromise; const tx = db.transaction(['subjects','attendance'], 'readwrite'); for (const s of subjectsToCreate) await tx.objectStore('subjects').put(s); for (const a of recordsToWrite) await tx.objectStore('attendance').put(a); await tx.done; }
+export async function importAttendanceData(subjectsToCreate: Subject[], recordsToWrite: Attendance[]) { const db = await dbPromise; const tx = db.transaction(['subjects', 'attendance'], 'readwrite'); for (const s of subjectsToCreate) await tx.objectStore('subjects').put(s); for (const a of recordsToWrite) await tx.objectStore('attendance').put(a); await tx.done; }
 
 export async function isReconciled(uid: string): Promise<boolean> {
   if (!uid) return false;

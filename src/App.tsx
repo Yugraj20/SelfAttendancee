@@ -1,6 +1,6 @@
 import { Component, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ErrorInfo, type ReactNode } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { BarChart3, BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, CloudUpload, Download, FileText, Home, LogOut, Moon, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
+import { BarChart3, BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, CloudUpload, Download, FileSpreadsheet, FileText, Home, LogOut, Moon, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { ThinkingOrb } from 'thinking-orbs';
 import { auth, firebaseConfigured, logout, signIn, type AuthUser } from './firebase';
@@ -12,8 +12,13 @@ import { analyse, annotate, buildWrites, summarise, validISO, willImport } from 
 import { makeBackup, parseBackup } from './backup';
 import type { Attendance, AttendanceStatus, BackupPayload, DetectedEntry, DetectedStatus, ReviewRow, Settings, Subject, SubjectGroup, TimetableEntry } from './types';
 import { DAYS } from './types';
+import { FloatingNav } from './components/FloatingNav';
+import { MonthlyAttendance } from './components/MonthlyAttendance';
+import { ExcelExportModal } from './components/ExcelExportModal';
+import { QuickMarkModal } from './components/QuickMarkModal';
+import { SubjectsPage } from './components/SubjectsPage';
 
-type Page='home'|'calendar'|'timetable'|'statistics'|'settings';
+type Page='home'|'subjects'|'calendar'|'timetable'|'statistics'|'settings';
 const colors=['#6d5dfc','#20c997','#ff8d5c','#e95d9a','#3989ff','#e0a526'];
 const todayDay=()=>DAYS[(new Date().getDay()+6)%7];
 const initialSubject=(uid:string, target:number):Subject=>({id:id(),uid,name:'',code:'',teacher:'',room:'',color:colors[0],target,createdAt:new Date().toISOString()});
@@ -164,7 +169,7 @@ export class ErrorBoundary extends Component<{children: ReactNode}, {hasError: b
 function AppContent() {
  const [user,setUser]=useState<AuthUser|null>(null),[loading,setLoading]=useState(true),[page,setPage]=useState<Page>('home');
  const [subjects,setSubjects]=useState<Subject[]>([]),[records,setRecords]=useState<Attendance[]>([]),[table,setTable]=useState<TimetableEntry[]>([]),[settings,setSettings]=useState<Settings|null>(null);
- const [modal,setModal]=useState<'subject'|'entry'|'import'|'attendance-import'|'backup'|'restore'|'clear'|null>(null),[editSubject,setEditSubject]=useState<Subject|null>(null),[editEntry,setEditEntry]=useState<TimetableEntry|null>(null),[toast,setToast]=useState('');
+ const [modal,setModal]=useState<'subject'|'entry'|'import'|'attendance-import'|'backup'|'restore'|'clear'|'excel-export'|'quick-mark'|null>(null),[editSubject,setEditSubject]=useState<Subject|null>(null),[editEntry,setEditEntry]=useState<TimetableEntry|null>(null),[toast,setToast]=useState('');
  const [syncStatus,setSyncStatus]=useState<SyncStatus>('idle'),[restoring,setRestoring]=useState(false),[jumpToday,setJumpToday]=useState(false),[syncFailed,setSyncFailed]=useState(false);
  const uid=user?.uid ?? '';
  // The toast stays mounted so it can animate out (transitions.dev 22-toast); the ref holds the
@@ -303,12 +308,16 @@ function AppContent() {
   if(!settings)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your settings…</div>;
  if(syncFailed&&!subjects.length&&!records.length)return <div className="center"><p style={{marginBottom:16}}>Couldn't reach your cloud copy, retry</p><button className="primary" onClick={retryLoginSync}>Retry</button></div>;
  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
- const nav=[['home',Home,'Home'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Statistics'],['settings',SettingsIcon,'Settings']] as const;
- return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')}><img src={user.photoURL??''} alt="Profile"/></button></div></header>
+ const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
+ return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')}><img src={user.photoURL??''} alt="Profile"/></button></div></header>
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
- {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onAdd={()=>{setEditEntry(blankEntry(uid));setModal('entry')}} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} stats={stats} restoring={restoring}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{await flushPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
- </main><nav className="bottom">{nav.slice(0,4).map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
- {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Clear local data?</h2><p>This removes attendance, subjects and timetable for this account from this device only. Download a backup first. Your Firestore backup is left untouched, so signing out and back in — or opening the app on another device — restores it.</p><button className="danger full" onClick={async()=>{await clearUser(uid);await reload(false);setModal(null);flash('Local data cleared')}}>Clear all data</button></Modal>}
+ {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
+ {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onAdd={()=>{setEditEntry(blankEntry(uid));setModal('entry')}} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{await flushPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
+ </main><FloatingNav activeKey={page} onNavigate={navigate} onOpenMark={()=>setModal('quick-mark')}/><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
+ {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Clear local data?</h2><p>This removes attendance, subjects and timetable for this account from this device only. Download a backup first. Your Firestore backup is left untouched, so signing out and back in — or opening the app on another device — restores it.</p>
+ <button className="danger full" onClick={async()=>{await clearUser(uid);await reload(false);setModal(null);flash('Local data cleared')}}>Clear all data</button></Modal>}
+ {modal==='excel-export'&&<ExcelExportModal subjects={subjects} records={records} table={table} currentYear={new Date().getFullYear()} currentMonth={new Date().getMonth()} studentName={user.displayName??''} studentEmail={user.email??''} onSuccess={(fn,cnt)=>flash(`Exported ${cnt} records to ${fn}`)} onClose={()=>setModal(null)}/>}
+ {modal==='quick-mark'&&<QuickMarkModal subjects={subjects} records={records} table={table} onMark={mark} onNavigateHome={()=>{setModal(null);navigate('home')}} onClose={()=>setModal(null)}/>}
  </div>
 }
 function Brand(){return <div className="brand"><span>✓</span><b>Self Attendance</b></div>}
@@ -533,9 +542,6 @@ function DayAttendance({subjects,records,table,day,onMark}:{subjects:Subject[];r
           <small>{status&&status!=='unmarked'?`Marked ${status}`:'Not marked'}</small>
         </div>
         <div className="three">
-          <button className={status==='present'?'picked present':''} onClick={()=>onMark(s.id,'present',day,targetSessionId)}>Present</button>
-          <button className={status==='absent'?'picked absent':''} onClick={()=>onMark(s.id,'absent',day,targetSessionId)}>Absent</button>
-          <button className={status==='cancelled'?'picked cancelled':''} onClick={()=>onMark(s.id,'cancelled',day,targetSessionId)}>Cancelled</button>
           <button className={status==='unmarked'?'picked':''} onClick={()=>onMark(s.id,'unmarked',day,targetSessionId)}>Clear</button>
         </div>
       </article>;
@@ -543,37 +549,127 @@ function DayAttendance({subjects,records,table,day,onMark}:{subjects:Subject[];r
   </div>;
 }
 
-function CalendarPage({subjects,records,table,onMark,onImport}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onImport?:()=>void}){const [cursor,setCursor]=useState(()=>new Date()),[selected,setSelected]=useState(dateISO());const y=cursor.getFullYear(),m=cursor.getMonth(),first=new Date(y,m,1),count=new Date(y,m+1,0).getDate(),offset=(first.getDay()+6)%7;const dates=Array.from({length:offset+count},(_,i)=>i<offset?'':`${y}-${String(m+1).padStart(2,'0')}-${String(i-offset+1).padStart(2,'0')}`);const validSubIds=new Set(subjects.map(s=>s.id));const validRecords=records.filter(r=>validSubIds.has(r.subjectId));const daily=validRecords.filter(r=>r.date===selected&&r.status!=='unmarked');return <><div className="calendar-head"><button className="icon" onClick={()=>setCursor(new Date(y,m-1,1))} aria-label="Previous month"><ChevronLeft/></button><h2>{cursor.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h2><button className="icon" onClick={()=>setCursor(new Date(y,m+1,1))} aria-label="Next month"><ChevronRight/></button></div><div className="week">{['M','T','W','T','F','S','S'].map((x,i)=><b key={i}>{x}</b>)}{dates.map((d,i)=>d?<button key={d} onClick={()=>setSelected(d)} className={`date ${selected===d?'selected':''}`}><span>{i-offset+1}</span><i className={validRecords.some(r=>r.date===d&&r.status==='absent')?'has-absent':validRecords.some(r=>r.date===d&&r.status==='present')?'has-present':''}/></button>:<span key={i}/>)}</div><section className="section-title"><div><h2>{new Date(selected+'T12:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</h2><p>{daily.filter(x=>x.status==='present').length} present · {daily.filter(x=>x.status==='absent').length} absent</p></div>{onImport&&<button className="text" onClick={onImport} style={{display:'inline-flex',alignItems:'center',gap:6}}><Sparkles size={16}/> Import AI</button>}</section><DayAttendance subjects={subjects} records={records} table={table} day={selected} onMark={onMark}/></>}
+function CalendarPage({subjects,records,table,onMark,onImport,onOpenMonthly}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onImport?:()=>void;onOpenMonthly?:()=>void}){
+  const [cursor,setCursor]=useState(()=>new Date()),[selected,setSelected]=useState(dateISO());
+  const y=cursor.getFullYear(),m=cursor.getMonth(),first=new Date(y,m,1),count=new Date(y,m+1,0).getDate(),offset=(first.getDay()+6)%7;
+  const dates=Array.from({length:offset+count},(_,i)=>i<offset?'':`${y}-${String(m+1).padStart(2,'0')}-${String(i-offset+1).padStart(2,'0')}`);
+  const validSubIds=new Set(subjects.map(s=>s.id));
+  const validRecords=records.filter(r=>validSubIds.has(r.subjectId));
+  const daily=validRecords.filter(r=>r.date===selected&&r.status!=='unmarked');
+  return <>
+    <div className="calendar-head">
+      <button className="icon" onClick={()=>setCursor(new Date(y,m-1,1))} aria-label="Previous month"><ChevronLeft/></button>
+      <h2>{cursor.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h2>
+      <button className="icon" onClick={()=>setCursor(new Date(y,m+1,1))} aria-label="Next month"><ChevronRight/></button>
+    </div>
+    <div className="week">
+      {['M','T','W','T','F','S','S'].map((x,i)=><b key={i}>{x}</b>)}
+      {dates.map((d,i)=>d?<button key={d} onClick={()=>setSelected(d)} className={`date ${selected===d?'selected':''}`}><span>{i-offset+1}</span><i className={validRecords.some(r=>r.date===d&&r.status==='absent')?'has-absent':validRecords.some(r=>r.date===d&&r.status==='present')?'has-present':''}/></button>:<span key={i}/>)}
+    </div>
+    <section className="section-title">
+      <div>
+        <h2>{new Date(selected+'T12:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</h2>
+        <p>{daily.filter(x=>x.status==='present').length} present · {daily.filter(x=>x.status==='absent').length} absent</p>
+      </div>
+      <div style={{display:'flex',gap:12,alignItems:'center'}}>
+        {onOpenMonthly&&<button className="text" onClick={onOpenMonthly} style={{display:'inline-flex',alignItems:'center',gap:5,fontWeight:600}}><CalendarDays size={16}/> Monthly View</button>}
+        {onImport&&<button className="text" onClick={onImport} style={{display:'inline-flex',alignItems:'center',gap:6}}><Sparkles size={16}/> Import AI</button>}
+      </div>
+    </section>
+    <DayAttendance subjects={subjects} records={records} table={table} day={selected} onMark={onMark}/>
+  </>;
+}
 const blankEntry=(uid:string):TimetableEntry=>({id:id(),uid,day:'Monday',subjectId:'',subject:'',startTime:'09:00',endTime:'10:00',room:'',teacher:'',type:'Lecture',notes:'',order:0});
 export function TimetablePage({subjects,table,onAdd,onEdit,onDelete,onImport}:{subjects:Subject[],table:TimetableEntry[],onAdd:()=>void,onEdit:(e:TimetableEntry)=>void,onDelete:(e:TimetableEntry)=>void,onImport:()=>void}){const [day,setDay]=useState(todayDay());const entries=table.filter(t=>t.day===day).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <><div className="toolbar"><div className="day-tabs">{DAYS.map(d=><button key={d} className={d===day?'active':''} onClick={()=>setDay(d)}>{d.slice(0,3)}</button>)}</div><button className="primary" onClick={onAdd}><Plus/> Add class</button></div><div className="import-banner"><Sparkles/><div><b>Import timetable with AI</b><span>Upload a PDF or image, then review every detected class.</span></div><button onClick={onImport}>Import</button></div>{!entries.length?<Empty title={`No classes on ${day}`} text="Build your weekly plan manually or import a timetable." action="Import timetable" onAction={onImport}/>:<div className="timeline">{entries.map(e=><article className="card entry" key={e.id}><time>{e.startTime}<small>{e.endTime}</small></time>{(()=>{const sub=subjects.find(s=>s.id===e.subjectId);const displayName=sub?.name||e.subject;return <div><h3>{displayName}</h3><p><span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'} {e.teacher&&`· ${e.teacher}`}</p><small>{e.notes}</small></div>})()}<button className="icon" onClick={()=>onEdit(e)} aria-label="Edit class">•••</button><button className="icon danger-text" onClick={()=>onDelete(e)} aria-label="Delete class"><Trash2/></button></article>)}</div>}</>}
-function Statistics({subjects,records,stats,restoring}:{subjects:Subject[],records:Attendance[],stats:ReturnType<typeof overall>,restoring:boolean}){
+function Statistics({subjects,records,table,stats,restoring,onExportExcel}:{subjects:Subject[],records:Attendance[],table:TimetableEntry[],stats:ReturnType<typeof overall>,restoring:boolean,onExportExcel:()=>void}){
+  const [tab, setTab] = useState<'overview' | 'monthly'>('overview');
   const chart=subjects.map(s=>({id:s.id,name:s.code||s.name.slice(0,8),value:+subjectStats(s,records).pct.toFixed(0),fill:s.color}));
   const validSubIds=useMemo(()=>new Set(subjects.map(s=>s.id)),[subjects]);
   const validRecords=useMemo(()=>records.filter(r=>validSubIds.has(r.subjectId)),[records,validSubIds]);
   const line=useMemo(()=>trend(validRecords),[validRecords]);
   const ranked=useMemo(()=>subjects.map(s=>({subject:s,x:subjectStats(s,records)})).sort((a,b)=>b.x.pct-a.x.pct),[subjects,records]);
   const best=ranked[0],lowest=ranked.length>1?ranked[ranked.length-1]:undefined;
-  // Nothing local yet and a pull in flight: show the shape of the page rather than "no data yet",
-  // which would be wrong as often as it is right. Every section below gets a placeholder, so the
-  // layout does not change height when the records land.
-  if(restoring&&!subjects.length)return <SkeletonStats/>;
+
   return <>
-    <section className="stat-cards"><article className="card"><p>Classes attended</p><h2>{stats.present}</h2></article><article className="card"><p>Classes missed</p><h2>{stats.absent}</h2></article><article className="card"><p>Overall</p><h2>{stats.pct.toFixed(1)}%</h2></article></section>
-    <section className="chart card"><h2>Subject attendance</h2>{chart.length?<ResponsiveContainer width="100%" height={270}><BarChart data={chart}><XAxis dataKey="name"/><Tooltip/><Bar dataKey="value" radius={[8,8,0,0]}>{chart.map(x=><Cell key={x.id} fill={x.fill}/>)}</Bar></BarChart></ResponsiveContainer>:<p>Add attendance to unlock your statistics.</p>}</section>
-    <section className="chart card"><h2>Overall over time</h2>{line.length>1?<ResponsiveContainer width="100%" height={230}><AreaChart data={line} margin={{top:6,right:6,left:-22,bottom:0}}>
-      <defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--brand)" stopOpacity=".38"/><stop offset="100%" stopColor="var(--brand)" stopOpacity="0"/></linearGradient></defs>
-      <CartesianGrid vertical={false} stroke="var(--line)"/>
-      <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={18}/>
-      <YAxis domain={[0,100]} ticks={[0,25,50,75,100]} tickLine={false} axisLine={false} width={44} unit="%"/>
-      <Tooltip formatter={(v:number)=>[`${v}%`,'Overall']}/>
-      <Area type="monotone" dataKey="pct" stroke="var(--brand)" strokeWidth={2.5} fill="url(#trend-fill)"/>
-    </AreaChart></ResponsiveContainer>:<p>Mark classes on two or more days and your trend will appear here.</p>}</section>
-    {ranked.length>0&&<section className="ring-grid">{ranked.map(({subject,x})=><article key={subject.id} className="card ring-card" style={{'--accent':subject.color} as CSSProperties}>
-      <div className="ring-mini" style={{'--p':`${Math.min(x.pct,100)}%`} as CSSProperties}><b>{x.pct.toFixed(0)}%</b></div>
-      <div><h3>{subject.name}</h3><p>{x.present} of {x.total} held · target {subject.target}%</p><small className={x.state}>{x.total===0?'No classes yet':x.pct>=subject.target?`Safe to miss ${x.bunk}`:x.required===-1?'Target unreachable':`Attend next ${x.required}`}</small></div>
-    </article>)}</section>}
-    <section className="grid two"><article className="card standout best"><h3>Best subject</h3><b>{best?.subject.name||'—'}</b><p>{best?`${best.x.pct.toFixed(0)}% · ${best.x.present} of ${best.x.total}`:'No data yet'}</p></article><article className="card standout risk"><h3>Needs attention</h3><b>{lowest?.subject.name||'—'}</b><p>{lowest?`${lowest.x.pct.toFixed(0)}% · ${lowest.x.present} of ${lowest.x.total}`:'No data yet'}</p></article></section>
-  </>
+    <div className="reports-top-bar">
+      <div className="view-segmented-control" role="tablist" aria-label="Reports View">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'overview'}
+          className={`view-tab-btn ${tab === 'overview' ? 'active' : ''}`}
+          onClick={() => setTab('overview')}
+        >
+          <BarChart3 size={15} />
+          <span>Overview Reports</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'monthly'}
+          className={`view-tab-btn ${tab === 'monthly' ? 'active' : ''}`}
+          onClick={() => setTab('monthly')}
+        >
+          <CalendarDays size={15} />
+          <span>Monthly Attendance</span>
+        </button>
+      </div>
+
+      <button
+        type="button"
+        className="primary btn-export-excel"
+        onClick={onExportExcel}
+        aria-label="Export attendance to Excel"
+      >
+        <FileSpreadsheet size={16} />
+        <span>Export Excel</span>
+      </button>
+    </div>
+
+    {tab === 'monthly' ? (
+      <MonthlyAttendance
+        subjects={subjects}
+        records={records}
+        table={table}
+        onExportExcel={onExportExcel}
+      />
+    ) : (
+      <>
+        {restoring&&!subjects.length?<SkeletonStats/>:(
+          <>
+            <section className="stat-cards">
+              <article className="card"><p>Classes attended</p><h2>{stats.present}</h2></article>
+              <article className="card"><p>Classes missed</p><h2>{stats.absent}</h2></article>
+              <article className="card"><p>Overall</p><h2>{stats.pct.toFixed(1)}%</h2></article>
+            </section>
+            <section className="chart card">
+              <h2>Subject attendance</h2>
+              {chart.length?<ResponsiveContainer width="100%" height={270}><BarChart data={chart}><XAxis dataKey="name"/><Tooltip/><Bar dataKey="value" radius={[8,8,0,0]}>{chart.map(x=><Cell key={x.id} fill={x.fill}/>)}</Bar></BarChart></ResponsiveContainer>:<p>Add attendance to unlock your statistics.</p>}
+            </section>
+            <section className="chart card">
+              <h2>Overall over time</h2>
+              {line.length>1?<ResponsiveContainer width="100%" height={230}><AreaChart data={line} margin={{top:6,right:6,left:-22,bottom:0}}>
+                <defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--brand)" stopOpacity=".38"/><stop offset="100%" stopColor="var(--brand)" stopOpacity="0"/></linearGradient></defs>
+                <CartesianGrid vertical={false} stroke="var(--line)"/>
+                <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={18}/>
+                <YAxis domain={[0,100]} ticks={[0,25,50,75,100]} tickLine={false} axisLine={false} width={44} unit="%"/>
+                <Tooltip formatter={(v:number)=>[`${v}%`,'Overall']}/>
+                <Area type="monotone" dataKey="pct" stroke="var(--brand)" strokeWidth={2.5} fill="url(#trend-fill)"/>
+              </AreaChart></ResponsiveContainer>:<p>Mark classes on two or more days and your trend will appear here.</p>}
+            </section>
+            {ranked.length>0&&<section className="ring-grid">{ranked.map(({subject,x})=><article key={subject.id} className="card ring-card" style={{'--accent':subject.color} as CSSProperties}>
+              <div className="ring-mini" style={{'--p':`${Math.min(x.pct,100)}%`} as CSSProperties}><b>{x.pct.toFixed(0)}%</b></div>
+              <div><h3>{subject.name}</h3><p>{x.present} of {x.total} held · target {subject.target}%</p><small className={x.state}>{x.total===0?'No classes yet':x.pct>=subject.target?`Safe to miss ${x.bunk}`:x.required===-1?'Target unreachable':`Attend next ${x.required}`}</small></div>
+            </article>)}</section>}
+            <section className="grid two">
+              <article className="card standout best"><h3>Best subject</h3><b>{best?.subject.name||'—'}</b><p>{best?`${best.x.pct.toFixed(0)}% · ${best.x.present} of ${best.x.total}`:'No data yet'}</p></article>
+              <article className="card standout risk"><h3>Needs attention</h3><b>{lowest?.subject.name||'—'}</b><p>{lowest?`${lowest.x.pct.toFixed(0)}% · ${lowest.x.present} of ${lowest.x.total}`:'No data yet'}</p></article>
+            </section>
+          </>
+        )}
+      </>
+    )}
+  </>;
 }
 function SkeletonStats(){
   return <div aria-hidden="true">
