@@ -1144,21 +1144,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{
   }
 }
 :root[data-theme=dark]{
-  --bg:#171720;
-  --panel:#22222d;
+  --bg:#14141b;
+  --panel:#1f1f2a;
   --ink:#f0eff7;
-  --muted:#aaa9ba;
-  --line:#353440;
-  --soft:#35334d;
+  --muted:#b4b3c4;
+  --line:#3d3d4d;
+  --brand:#b3a8ff;
+  --soft:#2f2d47;
   --shadow:none
 }
 :root[data-theme=amoled]{
   --bg:#000;
-  --panel:#0d0d0d;
+  --panel:#121216;
   --ink:#f6f4f8;
-  --muted:#adadb5;
-  --line:#282828;
-  --soft:#202024;
+  --muted:#b0b0ba;
+  --line:#3a3a42;
+  --brand:#b3a8ff;
+  --soft:#1c1c22;
   --shadow:none
 }
 :root[data-theme=dark] .card,:root[data-theme=amoled] .card{
@@ -3907,3 +3909,38 @@ html:has(.login){
   font-size: 13.5px;
 }
 
+
+
+/* ===== Dark / AMOLED contrast pass ===========================================================
+   Dark is a blue-slate; AMOLED is true black with neutral grey surfaces, so the two no longer read
+   as the same theme. --brand is lightened in both so purple text and icons clear 4.5:1 on panels. */
+:root[data-theme=dark] .ring:before{background:#2a2840}
+:root[data-theme=amoled] .ring:before{background:#1a1a22}
+:root[data-theme=dark] .ring,:root[data-theme=amoled] .ring{color:var(--ink);background:conic-gradient(#fff var(--p),#6d5dfc var(--p))}
+/* AMOLED: hairline on every card so surfaces separate from the pure-black page */
+:root[data-theme=amoled] .card{border-color:var(--line);background:var(--panel)}
+:root[data-theme=amoled] .overall{background:linear-gradient(135deg,#3b2fb8,#5a49e0);border:0}
+:root[data-theme=dark] .overall{background:linear-gradient(135deg,#4a3dd0,#6a5af0);border:0}
+:root[data-theme=dark] .overall,:root[data-theme=amoled] .overall,:root[data-theme=dark] .overall *,:root[data-theme=amoled] .overall *{color:#fff}
+:root[data-theme=dark] .ring *,:root[data-theme=amoled] .ring *{color:var(--ink)}
+/* Monthly view: pills and badges were light pastels in every theme */
+:root[data-theme=dark] .metric-tag.present,:root[data-theme=amoled] .metric-tag.present,
+:root[data-theme=dark] .badge-good,:root[data-theme=amoled] .badge-good,
+:root[data-theme=dark] .pill-present,:root[data-theme=amoled] .pill-present,
+:root[data-theme=dark] .status-pill-good,:root[data-theme=amoled] .status-pill-good{background:#123a2f;color:#6ee7b7}
+:root[data-theme=dark] .metric-tag.absent,:root[data-theme=amoled] .metric-tag.absent,
+:root[data-theme=dark] .badge-bad,:root[data-theme=amoled] .badge-bad,
+:root[data-theme=dark] .pill-absent,:root[data-theme=amoled] .pill-absent,
+:root[data-theme=dark] .status-pill-risk,:root[data-theme=amoled] .status-pill-risk{background:#3b1f26;color:#ffb4bd}
+:root[data-theme=dark] .badge-mixed,:root[data-theme=amoled] .badge-mixed{background:#332a17;color:#f3d9a6}
+:root[data-theme=dark] .pill-cancelled,:root[data-theme=amoled] .pill-cancelled{background:#33323f;color:#c7c5d6}
+/* Subjects page summary numbers (were inline dark-on-dark colours) */
+.stat-safe{color:#167158}.stat-risk{color:#d1495b}
+:root[data-theme=dark] .stat-safe,:root[data-theme=amoled] .stat-safe{color:#6ee7b7}
+:root[data-theme=dark] .stat-risk,:root[data-theme=amoled] .stat-risk{color:#ffb4bd}
+/* Recharts draws its own text and tooltip */
+:root[data-theme=dark] .recharts-text,:root[data-theme=amoled] .recharts-text{fill:var(--muted)}
+:root[data-theme=dark] .recharts-default-tooltip,:root[data-theme=amoled] .recharts-default-tooltip{background:var(--panel)!important;border-color:var(--line)!important;color:var(--ink)}
+:root[data-theme=dark] .recharts-tooltip-label,:root[data-theme=amoled] .recharts-tooltip-label{color:var(--ink)}
+:root[data-theme=dark] .recharts-cartesian-grid line,:root[data-theme=amoled] .recharts-cartesian-grid line{stroke:var(--line)}
+.avatar span{display:grid;place-content:center;width:100%;height:100%;font-weight:700}

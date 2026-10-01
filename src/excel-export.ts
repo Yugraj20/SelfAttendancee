@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { Attendance, Subject, TimetableEntry } from './types';
 import { DAYS } from './types';
+const localISO=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
 export interface ExcelExportOptions {
   studentName?: string;
@@ -52,8 +53,8 @@ export function exportAttendanceToExcel({
       const now = new Date(options.selectedYear, options.selectedMonth, 1);
       const semStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
       const semEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      startFilter = semStart.toISOString().slice(0, 10);
-      endFilter = semEnd.toISOString().slice(0, 10);
+      startFilter = localISO(semStart);
+      endFilter = localISO(semEnd);
       rangeLabel = `Semester (${startFilter} to ${endFilter})`;
     } else if (options.rangeType === 'custom') {
       startFilter = options.startDate || '1970-01-01';
@@ -120,7 +121,7 @@ export function exportAttendanceToExcel({
         const sPresent = sRecords.filter(r => r.status === 'present').length;
         const sAbsent = sTotal - sPresent;
         const sPct = sTotal > 0 ? (sPresent / sTotal) * 100 : 0;
-        const statusText = sTotal === 0 ? 'No classes recorded' : sPct >= s.target ? 'On Target' : 'Needs Attention';
+        const statusText = sTotal === 0 ? 'No classes recorded' : 100 * sPresent >= Math.round(s.target) * sTotal ? 'On Target' : 'Needs Attention';
 
         summaryAoa.push([
           s.name,

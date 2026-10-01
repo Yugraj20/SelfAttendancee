@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Check, Search, BookOpen, AlertCircle, Sparkles } from 'lucide-react';
+import { Plus, Check, Search, BookOpen } from 'lucide-react';
 import type { Attendance, AttendanceStatus, Subject } from '../types';
 import { subjectStats } from '../math';
 
@@ -55,11 +55,11 @@ export function SubjectsPage({
         </article>
         <article className="card" style={{ borderLeft: '4px solid #20c997' }}>
           <p>Total Safe Bunks</p>
-          <h2 style={{ color: '#167158' }}>{totalSafeBunks}</h2>
+          <h2 className="stat-safe">{totalSafeBunks}</h2>
         </article>
         <article className="card" style={{ borderLeft: '4px solid #e5566d' }}>
           <p>Needs Attention</p>
-          <h2 style={{ color: '#d1495b' }}>{atRiskCount}</h2>
+          <h2 className="stat-risk">{atRiskCount}</h2>
         </article>
       </div>
 
@@ -128,7 +128,7 @@ export function SubjectsPage({
                 <small className={x.state}>
                   {x.total === 0
                     ? 'No classes recorded yet'
-                    : x.pct >= s.target
+                    : x.state !== 'risk'
                     ? `Safe to miss ${x.bunk} classes`
                     : x.required === -1
                     ? 'Target 100% unreachable'

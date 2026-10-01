@@ -34,7 +34,7 @@ export function ExcelExportModal({
     `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`
   );
   const [endDate, setEndDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
+    new Date().toLocaleDateString('en-CA')
   );
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [includeSummary, setIncludeSummary] = useState(true);

@@ -192,7 +192,7 @@ export async function restore(
         const keys = await store.index('by-uid').getAllKeys(uid);
         await Promise.all(keys.map(k => store.delete(k)));
       }
-      await tx.objectStore('settings').delete(uid);
+      if (restoreSettings) await tx.objectStore('settings').delete(uid);
 
       for (const s of data.subjects) {
         await tx.objectStore('subjects').put({ ...s, uid });

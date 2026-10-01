@@ -1,7 +1,5 @@
 import React from 'react';
-import { Home, BookOpen, Plus, Calendar, BarChart3 } from 'lucide-react';
-
-export type NavItemKey = 'home' | 'subjects' | 'mark' | 'timetable' | 'reports';
+import { Home, BookOpen, Calendar, Clock3, BarChart3 } from 'lucide-react';
 
 interface FloatingNavProps { activeKey: string; onNavigate: (key: 'home' | 'subjects' | 'calendar' | 'timetable' | 'statistics') => void; }
 
@@ -66,7 +64,7 @@ export function FloatingNav({ activeKey, onNavigate }: FloatingNavProps) {
         aria-current={isTimetableActive ? 'page' : undefined}
       >
         <div className="dock-icon-wrapper">
-          <Calendar size={20} strokeWidth={isTimetableActive ? 2.5 : 2} />
+          <Clock3 size={20} strokeWidth={isTimetableActive ? 2.5 : 2} />
         </div>
         <span className="dock-label">Timetable</span>
       </button>

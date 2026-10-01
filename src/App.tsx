@@ -266,7 +266,16 @@ function AppContent() {
     await reload();
     flash(history?'Subject and history deleted':'Subject deleted; attendance history preserved');
   };
+ const marking=useRef(new Set<string>());
  const mark=async(subjectId:string,status:AttendanceStatus,date=dateISO(),sessionId='manual')=>{
+    // Drop a second tap on the same subject+date+session while the first write is still in flight;
+    // otherwise both taps see no existing record and each create one.
+    const lock=`${subjectId}|${date}|${sessionId}`;
+    if(marking.current.has(lock))return;
+    marking.current.add(lock);
+    try{await markNow(subjectId,status,date,sessionId)}finally{marking.current.delete(lock)}
+ };
+ const markNow=async(subjectId:string,status:AttendanceStatus,date:string,sessionId:string)=>{
     buzz();
     const dayOfWeek=DAYS[(new Date(date+'T12:00').getDay()+6)%7];
     const defaultEntry=table.find(t=>t.day===dayOfWeek&&t.subjectId===subjectId);
@@ -323,7 +332,7 @@ function AppContent() {
  if(syncFailed&&!subjects.length&&!records.length)return <div className="center"><p style={{marginBottom:16}}>Couldn't reach your cloud copy, retry</p><button className="primary" onClick={retryLoginSync}>Retry</button></div>;
  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
- return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')}><img src={user.photoURL??''} alt="Profile"/></button></div></header>
+ return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
  {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{await flushPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
@@ -457,7 +466,7 @@ function Dashboard({subjects,records,table,stats,restoring,onMark,onAdd,onEdit,o
     <article className="card action"><Sparkles/><h3>Quick start</h3><button onClick={onAdd}><Plus/> Add subject</button><button className="text" onClick={()=>onNav('timetable')}>Set up timetable →</button></article></section>
     <TodaysClasses entries={today} subjects={subjects} records={records} currentId={currentClass?.id} nextId={next?.id} restoring={restoring&&!table.length} onMark={onMark} onSetup={()=>onNav('timetable')}/>
     <section className="section-title"><div><h2>Your subjects</h2><p>One tap is all it takes.</p></div><button className="primary" onClick={onAdd}><Plus/> Add subject</button></section>
-    {restoring&&!subjects.length?<SkeletonSubjects/>:!subjects.length?<Empty title="Start with your subjects" text="Add a subject or import your timetable, then your attendance will come to life." action="Add your first subject" onAction={onAdd}/>:<section className="subject-grid">{subjects.map(s=>{const x=subjectStats(s,records);return <article className={`subject card${flashed===s.id?' card-flash':''}`} key={s.id} style={{'--accent':s.color} as CSSProperties}><div className="subject-top"><span className="subject-icon">{s.code.slice(0,2)||'•'}</span><button className="more" onClick={()=>onEdit(s)} aria-label={`Edit ${s.name}`}>•••</button></div><h3>{s.name}</h3><p>{s.code||'No code'} · {s.teacher||'Teacher not set'}</p><div className="percent"><b>{x.pct.toFixed(0)}%</b><span>{x.present} / {x.total} classes</span></div><div className="progress"><i style={{width:`${Math.min(x.pct,100)}%`}}/></div><small className={x.state}>{x.total===0?'No classes yet':x.pct>=s.target?`Safe to miss ${x.bunk} classes`:x.required===-1?'Target 100% unreachable':`Attend next ${x.required} to reach ${s.target}%`}</small><div className="mark"><button aria-label="Mark absent" className="absent" onClick={()=>{fireFlash(s.id);onMark(s.id,'absent')}}>−</button><button aria-label="Mark present" className="present" onClick={()=>{fireFlash(s.id);onMark(s.id,'present')}}><Check/> Present</button></div></article>})}</section>}
+    {restoring&&!subjects.length?<SkeletonSubjects/>:!subjects.length?<Empty title="Start with your subjects" text="Add a subject or import your timetable, then your attendance will come to life." action="Add your first subject" onAction={onAdd}/>:<section className="subject-grid">{subjects.map(s=>{const x=subjectStats(s,records);return <article className={`subject card${flashed===s.id?' card-flash':''}`} key={s.id} style={{'--accent':s.color} as CSSProperties}><div className="subject-top"><span className="subject-icon">{s.code.slice(0,2)||'•'}</span><button className="more" onClick={()=>onEdit(s)} aria-label={`Edit ${s.name}`}>•••</button></div><h3>{s.name}</h3><p>{s.code||'No code'} · {s.teacher||'Teacher not set'}</p><div className="percent"><b>{x.pct.toFixed(0)}%</b><span>{x.present} / {x.total} classes</span></div><div className="progress"><i style={{width:`${Math.min(x.pct,100)}%`}}/></div><small className={x.state}>{x.total===0?'No classes yet':x.state!=='risk'?`Safe to miss ${x.bunk} classes`:x.required===-1?'Target 100% unreachable':`Attend next ${x.required} to reach ${s.target}%`}</small><div className="mark"><button aria-label="Mark absent" className="absent" onClick={()=>{fireFlash(s.id);onMark(s.id,'absent')}}>−</button><button aria-label="Mark present" className="present" onClick={()=>{fireFlash(s.id);onMark(s.id,'present')}}><Check/> Present</button></div></article>})}</section>}
   </>
 }
 // Today's Classes: the P0 "one tap, most common path" surface. Each card is tied to its own
@@ -605,7 +614,7 @@ function Statistics({subjects,records,table,stats,restoring,onExportExcel}:{subj
   const validRecords=useMemo(()=>records.filter(r=>validSubIds.has(r.subjectId)),[records,validSubIds]);
   const line=useMemo(()=>trend(validRecords),[validRecords]);
   const ranked=useMemo(()=>subjects.map(s=>({subject:s,x:subjectStats(s,records)})).sort((a,b)=>b.x.pct-a.x.pct),[subjects,records]);
-  const best=ranked[0],lowest=ranked.length>1?ranked[ranked.length-1]:undefined;
+  const held=ranked.filter(r=>r.x.total>0),best=held[0],lowest=held.length>1?held[held.length-1]:undefined;
 
   return <>
     <div className="reports-top-bar">
@@ -676,7 +685,7 @@ function Statistics({subjects,records,table,stats,restoring,onExportExcel}:{subj
             </section>
             {ranked.length>0&&<section className="ring-grid">{ranked.map(({subject,x})=><article key={subject.id} className="card ring-card" style={{'--accent':subject.color} as CSSProperties}>
               <div className="ring-mini" style={{'--p':`${Math.min(x.pct,100)}%`} as CSSProperties}><b>{x.pct.toFixed(0)}%</b></div>
-              <div><h3>{subject.name}</h3><p>{x.present} of {x.total} held · target {subject.target}%</p><small className={x.state}>{x.total===0?'No classes yet':x.pct>=subject.target?`Safe to miss ${x.bunk}`:x.required===-1?'Target unreachable':`Attend next ${x.required}`}</small></div>
+              <div><h3>{subject.name}</h3><p>{x.present} of {x.total} held · target {subject.target}%</p><small className={x.state}>{x.total===0?'No classes yet':x.state!=='risk'?`Safe to miss ${x.bunk}`:x.required===-1?'Target unreachable':`Attend next ${x.required}`}</small></div>
             </article>)}</section>}
             <section className="grid two">
               <article className="card standout best"><h3>Best subject</h3><b>{best?.subject.name||'—'}</b><p>{best?`${best.x.pct.toFixed(0)}% · ${best.x.present} of ${best.x.total}`:'No data yet'}</p></article>
@@ -861,7 +870,9 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
       const known=new Map<string,Subject>();
       subjects.forEach(s=>known.set(norm(s.name),s));
       const saves:Subject[]=[],entries:TimetableEntry[]=[],seen=new Set<string>();
-      const existing=new Set(table.map(t=>`${t.subjectId}|${t.day}|${t.startTime}|${t.endTime}|${t.room}`));
+      // importTimetableData replaces the whole timetable, so matching rows are kept (reusing the old id so
+      // attendance already linked to that session stays linked) rather than skipped and then deleted.
+      const existingIds=new Map(table.map(t=>[`${t.subjectId}|${t.day}|${t.startTime}|${t.endTime}|${t.room}`,t.id]));
       let created=0;
       let skipped=0;
       for(const x of items){
@@ -889,12 +900,12 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
           }
         }
         const key=`${s.id}|${day}|${x.startTime}|${x.endTime}|${room}`;
-        if(existing.has(key)||seen.has(key)){
+        if(seen.has(key)){
           skipped++;
           continue;
         }
         seen.add(key);
-        entries.push({...blankEntry(uid),id:id(),uid,day,subjectId:s.id,subject:name,startTime:x.startTime,endTime:x.endTime,room,teacher,type:x.type||'Lecture',notes:x.notes??'',order:0});
+        entries.push({...blankEntry(uid),id:existingIds.get(key)??id(),uid,day,subjectId:s.id,subject:name,startTime:x.startTime,endTime:x.endTime,room,teacher,type:x.type||'Lecture',notes:x.notes??'',order:0});
       }
       await importTimetableData(uid,saves,entries);
       setSummary({imported:entries.length,skipped});
@@ -1097,6 +1108,6 @@ export function BackupModal({data,onClose}:{data:BackupPayload,onClose:()=>void}
     <button className="primary full" onClick={download}><Download/> Download backup (.txt)</button>
   </Modal>;
 }
-function RestoreModal({uid,onDone,onClose}:{uid:string,onDone:()=>void,onClose:()=>void}){const [data,setData]=useState<BackupPayload|null>(null),[error,setError]=useState(''),[mode,setMode]=useState<'merge'|'replace'>('merge');const input=useRef<HTMLInputElement>(null);const choose=async(f?:File)=>{if(!f)return;try{setError('');setData(parseBackup(await f.text()))}catch(e){setData(null);setError(e instanceof Error?e.message:'Could not read that backup.')}};return <Modal onClose={onClose}><h2>Restore backup</h2><p>Nothing changes until you confirm.</p><input ref={input} type="file" accept="text/plain,.txt" onChange={e=>choose(e.target.files?.[0])}/>{error&&<div className="error">{error}</div>}{data&&<><div className="success"><Check/> Found {data.subjects.length} subjects, {data.attendance.length} attendance records, and {data.timetable.length} timetable entries.</div><label className="choice"><input type="radio" checked={mode==='merge'} onChange={()=>setMode('merge')}/> Merge with existing data</label><label className="choice"><input type="radio" checked={mode==='replace'} onChange={()=>setMode('replace')}/> Replace existing data</label><button className="primary full" onClick={async()=>{try{await restore(uid,data,mode==='replace');onDone()}catch(e){setError(e instanceof Error?e.message:'Restore failed.')}}}>Confirm restore</button></>}</Modal>}
+function RestoreModal({uid,onDone,onClose}:{uid:string,onDone:()=>void,onClose:()=>void}){const [data,setData]=useState<BackupPayload|null>(null),[error,setError]=useState(''),[mode,setMode]=useState<'merge'|'replace'>('merge'),[withSettings,setWithSettings]=useState(false);const input=useRef<HTMLInputElement>(null);const choose=async(f?:File)=>{if(!f)return;try{setError('');setData(parseBackup(await f.text()))}catch(e){setData(null);setError(e instanceof Error?e.message:'Could not read that backup.')}};return <Modal onClose={onClose}><h2>Restore backup</h2><p>Nothing changes until you confirm.</p><input ref={input} type="file" accept="text/plain,.txt" onChange={e=>choose(e.target.files?.[0])}/>{error&&<div className="error">{error}</div>}{data&&<><div className="success"><Check/> Found {data.subjects.length} subjects, {data.attendance.length} attendance records, and {data.timetable.length} timetable entries.</div><label className="choice"><input type="radio" checked={mode==='merge'} onChange={()=>setMode('merge')}/> Merge with existing data</label><label className="choice"><input type="radio" checked={mode==='replace'} onChange={()=>setMode('replace')}/> Replace existing data</label><label className="choice"><input type="checkbox" checked={withSettings} onChange={e=>setWithSettings(e.target.checked)}/> Also restore theme and default target</label>{mode==='replace'&&<div className="notice">Replace deletes your current subjects, attendance and timetable first.</div>}<button className="primary full" onClick={async()=>{try{await restore(uid,data,mode==='replace',withSettings);onDone()}catch(e){setError(e instanceof Error?e.message:'Restore failed.')}}}>Confirm restore</button></>}</Modal>}
 function Empty({title,text,action,onAction}:{title:string,text:string,action?:string,onAction?:()=>void}){return <section className="empty card"><BookOpen/><h2>{title}</h2><p>{text}</p>{action&&<button className="primary" onClick={onAction}>{action}</button>}</section>}
 export default function App(){return <ErrorBoundary><AppContent/></ErrorBoundary>;}
