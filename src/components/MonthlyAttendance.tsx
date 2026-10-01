@@ -40,11 +40,11 @@ export function MonthlyAttendance({
   // The explicit "This Month" action still returns to the current calendar month.
   const validSubjectIds = useMemo(() => new Set(subjects.map(s => s.id)), [subjects]);
   const initialView = useMemo(() => {
-    const latestDate = records
+    const datedRecords = records
       .filter(r => validSubjectIds.has(r.subjectId) && Boolean(r.date))
       .map(r => r.date)
-      .sort()
-      .at(-1);
+      .sort();
+    const latestDate = datedRecords[datedRecords.length - 1];
 
     if (!latestDate) {
       return { year: today.getFullYear(), month: today.getMonth() };
