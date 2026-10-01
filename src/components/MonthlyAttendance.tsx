@@ -34,9 +34,31 @@ export function MonthlyAttendance({
   onExportExcel
 }: MonthlyAttendanceProps) {
   const today = new Date();
-  const [selectedYear, setSelectedYear] = useState<number>(() => today.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(() => today.getMonth()); // 0-11
   const todayISO = today.toLocaleDateString('en-CA');
+
+  // Prefer the latest recorded attendance month as the initial view.
+  // The explicit "This Month" action still returns to the current calendar month.
+  const validSubjectIds = useMemo(() => new Set(subjects.map(s => s.id)), [subjects]);
+  const initialView = useMemo(() => {
+    const latestDate = records
+      .filter(r => validSubjectIds.has(r.subjectId) && Boolean(r.date))
+      .map(r => r.date)
+      .sort()
+      .at(-1);
+
+    if (!latestDate) {
+      return { year: today.getFullYear(), month: today.getMonth() };
+    }
+
+    const [year, month] = latestDate.split('-').map(Number);
+    return {
+      year: Number.isFinite(year) ? year : today.getFullYear(),
+      month: Number.isFinite(month) ? month - 1 : today.getMonth()
+    };
+  }, [records, validSubjectIds, today]);
+
+  const [selectedYear, setSelectedYear] = useState<number>(() => initialView.year);
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => initialView.month);
   const [selectedDate, setSelectedDate] = useState<string>(todayISO);
 
   // Month navigation
@@ -65,8 +87,6 @@ export function MonthlyAttendance({
     setSelectedDate(todayISO);
   };
 
-  // Valid subject IDs set
-  const validSubjectIds = useMemo(() => new Set(subjects.map(s => s.id)), [subjects]);
 
   // Filter records for the selected month (format YYYY-MM)
   const monthPrefix = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
