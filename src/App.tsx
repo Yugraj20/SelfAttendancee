@@ -354,11 +354,17 @@ function AppContent() {
   if(!settings)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your settings…</div>;
   if(syncFailed&&!subjects.length&&!records.length){
     const r=getLastSyncErrorReason();
-    return <div className="center"><p style={{marginBottom:16}}>{r==='invalid_data'?'Your cloud copy contains invalid data and could not be restored.':"Couldn't reach your cloud copy. Check your internet connection and retry."}</p><button className="primary" onClick={retryLoginSync}>Retry</button></div>;
+    const msg = r==='invalid_data'
+      ? 'Your cloud copy contains invalid data and could not be restored.'
+      : r==='payload_too_large'
+      ? "Your cloud copy exceeds Firestore's 1 MB document limit and cannot be synced."
+      : "Couldn't reach your cloud copy. Check your internet connection and retry.";
+    return <div className="center"><p style={{marginBottom:16}}>{msg}</p><button className="primary" onClick={retryLoginSync}>Retry</button></div>;
   }
  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
+ {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
  {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
@@ -371,7 +377,7 @@ function AppContent() {
  </div>
 }
 function Brand(){return <div className="brand"><span>✓</span><b>Self Attendance</b></div>}
-function SyncBadge({status}:{status:SyncStatus}){if(status==='idle')return null;const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:'Sync paused — retrying'}[status];return <span className={`sync-badge ${status}`}>{status==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>}
+function SyncBadge({status}:{status:SyncStatus}){if(status==='idle')return null;const reason=getLastSyncErrorReason();const errorLabel=reason==='payload_too_large'?'Limit exceeded (>1MB)':'Sync paused — retrying';const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:errorLabel}[status];return <span className={`sync-badge ${status}`} title={reason==='payload_too_large'?"Data exceeds Firestore's 1MB limit. Export or remove older records.":undefined}>{status==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>}
 // Seven weeks of a term, read as six weekday rows — one square per scheduled class. Fixed rather
 // than random so the screen animates identically on every load, and chosen so the figures agree
 // with each other: 31 present, 6 absent and 5 not held is exactly the 22-of-24 and 9-of-13 split

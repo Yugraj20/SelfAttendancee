@@ -11,6 +11,17 @@ export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
 /** What a login reconcile actually did, so the caller never has to guess from a boolean. */
 export type SyncResult = 'pulled' | 'seeded' | 'failed' | 'skipped';
 
+export const FIRESTORE_MAX_DOC_SIZE = 1048576; // 1 MiB
+export const FIRESTORE_WARN_DOC_SIZE = 870400; // ~850 KB
+
+export function estimatePayloadSize(payload: unknown): number {
+  const json = JSON.stringify(payload);
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(json).length;
+  }
+  return json.length;
+}
+
 interface CloudDoc {
   subjects: Subject[];
   attendance: Attendance[];
@@ -77,7 +88,20 @@ export async function executePush(uid: string, cb?: (s: SyncStatus) => void): Pr
       cb?.('syncing');
       const rev = await getDirtyRevision(uid);
       const local = await userData(uid);
-      await setDoc(userDoc(fsInstance, uid), { ...local, updatedAt: new Date().toISOString() });
+      const payload = { ...local, updatedAt: new Date().toISOString() };
+      const size = estimatePayloadSize(payload);
+      if (size >= FIRESTORE_MAX_DOC_SIZE) {
+        lastSyncErrorReason = 'payload_too_large';
+        console.error(`Cloud sync (push) failed: Document size (${Math.round(size / 1024)} KB) exceeds Firestore 1 MiB limit.`);
+        retryCounts.delete(uid);
+        cb?.('error');
+        return;
+      }
+      if (size >= FIRESTORE_WARN_DOC_SIZE) {
+        console.warn(`Cloud sync warning: Document size is near the 1 MiB limit (${Math.round(size / 1024)} KB). Consider archiving older records.`);
+      }
+      await setDoc(userDoc(fsInstance, uid), payload);
+      lastSyncErrorReason = null;
       const cleared = await clearDirty(uid, rev);
       if (cleared) {
         retryCounts.delete(uid);
@@ -140,7 +164,7 @@ export function syncOnLogin(uid: string, onStatus?: (s: SyncStatus) => void): Pr
   return started;
 }
 
-export type SyncErrorReason = 'network' | 'invalid_data' | null;
+export type SyncErrorReason = 'network' | 'invalid_data' | 'payload_too_large' | null;
 let lastSyncErrorReason: SyncErrorReason = null;
 export function getLastSyncErrorReason(): SyncErrorReason {
   return lastSyncErrorReason;
@@ -155,9 +179,20 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
     const reconciled = await isReconciled(uid);
     const dirty = await isDirty(uid);
     if (reconciled && dirty) {
+      const rev = await getDirtyRevision(uid);
       const local = await userData(uid);
-      await setDoc(userDoc(fs, uid), { ...local, updatedAt: new Date().toISOString() });
-      await setDirty(uid, false);
+      const payload = { ...local, updatedAt: new Date().toISOString() };
+      const size = estimatePayloadSize(payload);
+      if (size >= FIRESTORE_MAX_DOC_SIZE) {
+        lastSyncErrorReason = 'payload_too_large';
+        onStatus?.('error');
+        return 'failed';
+      }
+      if (size >= FIRESTORE_WARN_DOC_SIZE) {
+        console.warn(`Cloud sync warning: Document size is near the 1 MiB limit (${Math.round(size / 1024)} KB).`);
+      }
+      await setDoc(userDoc(fs, uid), payload);
+      await clearDirty(uid, rev);
       await setReconciled(uid, true);
       onStatus?.('synced');
       return 'seeded';
@@ -166,9 +201,20 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
     if (snap.exists()) {
       const stillDirty = await isDirty(uid);
       if (reconciled && stillDirty) {
+        const rev = await getDirtyRevision(uid);
         const local = await userData(uid);
-        await setDoc(userDoc(fs, uid), { ...local, updatedAt: new Date().toISOString() });
-        await setDirty(uid, false);
+        const payload = { ...local, updatedAt: new Date().toISOString() };
+        const size = estimatePayloadSize(payload);
+        if (size >= FIRESTORE_MAX_DOC_SIZE) {
+          lastSyncErrorReason = 'payload_too_large';
+          onStatus?.('error');
+          return 'failed';
+        }
+        if (size >= FIRESTORE_WARN_DOC_SIZE) {
+          console.warn(`Cloud sync warning: Document size is near the 1 MiB limit (${Math.round(size / 1024)} KB).`);
+        }
+        await setDoc(userDoc(fs, uid), payload);
+        await clearDirty(uid, rev);
         await setReconciled(uid, true);
         onStatus?.('synced');
         return 'seeded';
@@ -199,9 +245,20 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
       onStatus?.('synced');
       return 'pulled';
     }
+    const rev = await getDirtyRevision(uid);
     const local = await userData(uid);
-    await setDoc(userDoc(fs, uid), { ...local, updatedAt: new Date().toISOString() });
-    await setDirty(uid, false);
+    const payload = { ...local, updatedAt: new Date().toISOString() };
+    const size = estimatePayloadSize(payload);
+    if (size >= FIRESTORE_MAX_DOC_SIZE) {
+      lastSyncErrorReason = 'payload_too_large';
+      onStatus?.('error');
+      return 'failed';
+    }
+    if (size >= FIRESTORE_WARN_DOC_SIZE) {
+      console.warn(`Cloud sync warning: Document size is near the 1 MiB limit (${Math.round(size / 1024)} KB).`);
+    }
+    await setDoc(userDoc(fs, uid), payload);
+    await clearDirty(uid, rev);
     await setReconciled(uid, true);
     onStatus?.('synced');
     return 'seeded';
@@ -263,7 +320,13 @@ export async function flushPendingPush(uid: string): Promise<void> {
   try {
     const rev = await getDirtyRevision(uid);
     const local = await userData(uid);
-    await setDoc(userDoc(fsInstance, uid), { ...local, updatedAt: new Date().toISOString() });
+    const payload = { ...local, updatedAt: new Date().toISOString() };
+    const size = estimatePayloadSize(payload);
+    if (size >= FIRESTORE_MAX_DOC_SIZE) {
+      lastSyncErrorReason = 'payload_too_large';
+      return;
+    }
+    await setDoc(userDoc(fsInstance, uid), payload);
     await clearDirty(uid, rev);
   } catch (e) {
     console.error('Cloud sync (flush) failed:', e);
