@@ -271,7 +271,16 @@ export async function flushPendingPush(uid: string): Promise<void> {
 }
 
 /** Cancel any pending debounced push (call on logout so a stale timer doesn't fire for the next user). */
-export function cancelPendingPush(uid: string) {
+export function cancelPendingPush(uid?: string) {
+  if (!uid) {
+    for (const id of Array.from(activeUids)) {
+      cancelPendingPush(id);
+    }
+    for (const id of Array.from(pushTimers.keys())) {
+      cancelPendingPush(id);
+    }
+    return;
+  }
   const existing = pushTimers.get(uid);
   if (existing) { clearTimeout(existing); pushTimers.delete(uid); }
   const existingRetry = retryTimers.get(uid);
@@ -279,6 +288,7 @@ export function cancelPendingPush(uid: string) {
   retryCounts.delete(uid);
   activeUids.delete(uid);
   statusListeners.delete(uid);
+  inFlightPushes.delete(uid);
 }
 
 export function _clearAllPendingPushesForTesting() {
