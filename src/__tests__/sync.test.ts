@@ -11,6 +11,7 @@ vi.mock('firebase/firestore', async (importOriginal) => {
     ...actual,
     doc: vi.fn((fs: any, col: string, id: string) => ({ fs, path: `${col}/${id}`, id })),
     getDoc: vi.fn(),
+    getDocFromServer: vi.fn(),
     setDoc: vi.fn(),
   };
 });
@@ -25,6 +26,7 @@ describe('sync.ts cloud sync operations', () => {
     _setFirestoreForTesting(mockFirestore.mockFs);
 
     vi.mocked(firestoreModule.getDoc).mockImplementation(mockFirestore.getDoc as any);
+    vi.mocked(firestoreModule.getDocFromServer).mockImplementation(mockFirestore.getDoc as any);
     vi.mocked(firestoreModule.setDoc).mockImplementation(mockFirestore.setDoc as any);
   });
 
@@ -89,7 +91,7 @@ describe('sync.ts cloud sync operations', () => {
   });
 
   it('returns failed and triggers error status if getDoc throws', async () => {
-    vi.mocked(firestoreModule.getDoc).mockRejectedValueOnce(new Error('Network offline'));
+    vi.mocked(firestoreModule.getDocFromServer).mockRejectedValueOnce(new Error('Network offline'));
 
     const statuses: string[] = [];
     const res = await syncOnLogin(uid, s => statuses.push(s));
@@ -104,7 +106,7 @@ describe('sync.ts cloud sync operations', () => {
     const pendingPromise = new Promise(resolve => {
       resolveGetDoc = resolve;
     });
-    vi.mocked(firestoreModule.getDoc).mockReturnValueOnce(pendingPromise as any);
+    vi.mocked(firestoreModule.getDocFromServer).mockReturnValueOnce(pendingPromise as any);
 
     const call1 = syncOnLogin(uid);
     const call2 = syncOnLogin(uid);
@@ -163,7 +165,7 @@ describe('sync.ts cloud sync operations', () => {
   it('BUG-003: does not push to cloud if reconcile failed and marker is not set', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
-      vi.mocked(firestoreModule.getDoc).mockRejectedValueOnce(new Error('Network offline'));
+      vi.mocked(firestoreModule.getDocFromServer).mockRejectedValueOnce(new Error('Network offline'));
       const res = await syncOnLogin(uid);
       expect(res).toBe('failed');
 
@@ -190,11 +192,13 @@ describe('sync.ts cloud sync operations', () => {
         settings: sampleSettings({ uid }),
         updatedAt: new Date().toISOString(),
       });
-      vi.mocked(firestoreModule.getDoc).mockImplementation(async (ref: any) => ({
+      const impl = async (ref: any) => ({
         exists: () => mockFirestore.docs.has(ref.path),
         data: () => mockFirestore.docs.get(ref.path),
         id: ref.id,
-      } as any));
+      } as any);
+      vi.mocked(firestoreModule.getDoc).mockImplementation(impl);
+      vi.mocked(firestoreModule.getDocFromServer).mockImplementation(impl);
 
       await syncOnLogin(uid);
       expect(await isReconciled(uid)).toBe(true);
@@ -228,11 +232,13 @@ describe('sync.ts cloud sync operations', () => {
       settings: sampleSettings({ uid }),
       updatedAt: new Date().toISOString(),
     });
-    vi.mocked(firestoreModule.getDoc).mockImplementation(async (ref: any) => ({
+    const impl1 = async (ref: any) => ({
       exists: () => mockFirestore.docs.has(ref.path),
       data: () => mockFirestore.docs.get(ref.path),
       id: ref.id,
-    } as any));
+    } as any);
+    vi.mocked(firestoreModule.getDoc).mockImplementation(impl1);
+    vi.mocked(firestoreModule.getDocFromServer).mockImplementation(impl1);
 
     await syncOnLogin(uid);
 
@@ -260,11 +266,13 @@ describe('sync.ts cloud sync operations', () => {
       settings: sampleSettings({ uid }),
       updatedAt: new Date().toISOString(),
     });
-    vi.mocked(firestoreModule.getDoc).mockImplementation(async (ref: any) => ({
+    const impl2 = async (ref: any) => ({
       exists: () => mockFirestore.docs.has(ref.path),
       data: () => mockFirestore.docs.get(ref.path),
       id: ref.id,
-    } as any));
+    } as any);
+    vi.mocked(firestoreModule.getDoc).mockImplementation(impl2);
+    vi.mocked(firestoreModule.getDocFromServer).mockImplementation(impl2);
 
     await syncOnLogin(uid);
 
@@ -297,7 +305,7 @@ describe('sync.ts cloud sync operations', () => {
     const slowGetDoc = new Promise((resolve) => {
       resolveGetDoc = resolve;
     });
-    vi.mocked(firestoreModule.getDoc).mockReturnValueOnce(slowGetDoc as any);
+    vi.mocked(firestoreModule.getDocFromServer).mockReturnValueOnce(slowGetDoc as any);
 
     await setReconciled(uid, true);
     // Start sync on login

@@ -2,7 +2,7 @@
 // write happens there first, instantly, whether or not the user is signed in. This module mirrors
 // that data to Firestore at `users/{uid}` so a signed-in user can pick up the same data on another
 // device. All of it is best-effort: if Firestore is unreachable, local reads/writes are unaffected.
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
+import { doc, getDocFromServer, setDoc, type Firestore } from 'firebase/firestore';
 import { firestore } from './firebase';
 import { isDirty, isReconciled, restore, setDirty, setReconciled, userData } from './db';
 import type { Attendance, Settings, Subject, TimetableEntry } from './types';
@@ -127,7 +127,7 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
       onStatus?.('synced');
       return 'seeded';
     }
-    const snap = await getDoc(userDoc(fs, uid));
+    const snap = await getDocFromServer(userDoc(fs, uid));
     if (snap.exists()) {
       const stillDirty = await isDirty(uid);
       if (reconciled && stillDirty) {
