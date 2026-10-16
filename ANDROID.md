@@ -35,13 +35,13 @@ This document describes how to develop, build, sign, and release the **Self Atte
 To build and run the Android app locally, ensure your environment has:
 - **Node.js**: v20 or v22 LTS
 - **npm**: v10+
-- **JDK**: Java Development Kit 17 (recommended: [Eclipse Temurin JDK 17](https://adoptium.net/temurin/releases/?version=17))
+- **JDK**: Java Development Kit 21 LTS (recommended: [Eclipse Temurin JDK 21](https://adoptium.net/temurin/releases/?version=21))
 - **Android Studio**: Android Studio Jellyfish / Koala / Ladybug+ (with Android SDK Platform 34 or 35 and Android SDK Build-Tools installed)
 
 Verify your Java and Android configuration:
 ```bash
 java -version
-# Ensure JAVA_HOME points to your JDK 17 installation
+# Ensure JAVA_HOME points to your JDK 21 installation
 ```
 
 ---
