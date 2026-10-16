@@ -307,7 +307,7 @@ function AppContent() {
     const resolvedSessionId=timetableEntry?timetableEntry.id:sessionId;
     const old=records.find(r=>r.subjectId===subjectId&&r.date===date&&r.sessionId===resolvedSessionId)
       ?? records.find(r=>r.subjectId===subjectId&&r.date===date&&r.sessionId===sessionId)
-      ?? (sessionId==='manual'?records.find(r=>r.subjectId===subjectId&&r.date===date):undefined);
+      ?? records.find(r=>r.subjectId===subjectId&&r.date===date&&(r.sessionId==='manual'||!table.some(t=>t.id===r.sessionId)));
     const targetSessionId=old?.sessionId??resolvedSessionId;
     if(status==='unmarked'){
       if(old){
