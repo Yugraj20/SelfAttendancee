@@ -461,6 +461,8 @@ export async function setReconciled(uid: string, reconciled: boolean): Promise<v
   }
 }
 
+let globalRevision = Date.now();
+
 export async function isDirty(uid: string): Promise<boolean> {
   if (!uid) return false;
   const db = await dbPromise;
@@ -468,12 +470,51 @@ export async function isDirty(uid: string): Promise<boolean> {
   return Boolean(rec);
 }
 
-export async function setDirty(uid: string, dirty: boolean): Promise<void> {
-  if (!uid) return;
+export async function getDirtyRevision(uid: string): Promise<number> {
+  if (!uid) return 0;
   const db = await dbPromise;
+  const rec = await db.get('users', `dirty:${uid}`);
+  if (!rec) return 0;
+  return (rec as any).revision ?? 1;
+}
+
+export async function markDirty(uid: string): Promise<number> {
+  if (!uid) return 0;
+  const db = await dbPromise;
+  const rev = ++globalRevision;
+  await db.put('users', {
+    uid: `dirty:${uid}`,
+    email: '',
+    name: '',
+    photoURL: '',
+    updatedAt: new Date().toISOString(),
+    revision: rev,
+  } as any);
+  return rev;
+}
+
+export async function clearDirty(uid: string, expectedRevision?: number): Promise<boolean> {
+  if (!uid) return false;
+  const db = await dbPromise;
+  if (expectedRevision !== undefined) {
+    const rec = await db.get('users', `dirty:${uid}`);
+    if (!rec) return true;
+    const currentRev = (rec as any).revision ?? 1;
+    if (currentRev !== expectedRevision) {
+      return false;
+    }
+  }
+  await db.delete('users', `dirty:${uid}`);
+  return true;
+}
+
+export async function setDirty(uid: string, dirty: boolean, expectedRevision?: number): Promise<boolean> {
+  if (!uid) return false;
   if (dirty) {
-    await db.put('users', { uid: `dirty:${uid}`, email: '', name: '', photoURL: '', updatedAt: new Date().toISOString() });
+    await markDirty(uid);
+    return true;
   } else {
-    await db.delete('users', `dirty:${uid}`);
+    return clearDirty(uid, expectedRevision);
   }
 }
+

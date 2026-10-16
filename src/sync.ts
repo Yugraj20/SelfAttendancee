@@ -4,7 +4,7 @@
 // device. All of it is best-effort: if Firestore is unreachable, local reads/writes are unaffected.
 import { doc, getDocFromServer, setDoc, type Firestore } from 'firebase/firestore';
 import { firestore } from './firebase';
-import { isDirty, isReconciled, restore, setDirty, setReconciled, userData } from './db';
+import { isDirty, isReconciled, restore, setDirty, setReconciled, userData, getDirtyRevision, clearDirty, markDirty } from './db';
 import type { Attendance, Settings, Subject, TimetableEntry } from './types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
@@ -25,6 +25,7 @@ const retryTimers = new Map<string, number>();
 const retryCounts = new Map<string, number>();
 const activeUids = new Set<string>();
 const statusListeners = new Map<string, (s: SyncStatus) => void>();
+const inFlightPushes = new Map<string, Promise<void>>();
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
@@ -55,38 +56,65 @@ function userDoc(fs: Firestore, uid: string) {
 export async function executePush(uid: string, cb?: (s: SyncStatus) => void): Promise<void> {
   const fsInstance = getFirestoreInstance();
   if (!fsInstance || !uid) return;
-  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-  if (!isOnline) {
-    cb?.('offline');
-    return;
-  }
-  const reconciled = await isReconciled(uid);
-  if (!reconciled) return;
-  try {
-    cb?.('syncing');
-    const local = await userData(uid);
-    await setDoc(userDoc(fsInstance, uid), { ...local, updatedAt: new Date().toISOString() });
-    await setDirty(uid, false);
-    retryCounts.delete(uid);
-    cb?.('synced');
-  } catch (e) {
-    console.error('Cloud sync (push) failed:', e);
-    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-    cb?.(isOnline ? 'error' : 'offline');
 
-    const count = (retryCounts.get(uid) ?? 0) + 1;
-    retryCounts.set(uid, count);
-    if (count <= 5) {
-      const backoffMs = Math.min(1000 * Math.pow(2, count - 1), 30000);
-      const rTimer = setTimeout(async () => {
-        retryTimers.delete(uid);
-        const isRec = await isReconciled(uid);
-        const isD = await isDirty(uid);
-        if (isRec && isD) {
-          await executePush(uid, cb);
+  const running = inFlightPushes.get(uid);
+  if (running) {
+    await running;
+    const dirty = await isDirty(uid);
+    if (!dirty) return;
+  }
+
+  const pushPromise = (async () => {
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (!isOnline) {
+      cb?.('offline');
+      return;
+    }
+    const reconciled = await isReconciled(uid);
+    if (!reconciled) return;
+
+    try {
+      cb?.('syncing');
+      const rev = await getDirtyRevision(uid);
+      const local = await userData(uid);
+      await setDoc(userDoc(fsInstance, uid), { ...local, updatedAt: new Date().toISOString() });
+      const cleared = await clearDirty(uid, rev);
+      if (cleared) {
+        retryCounts.delete(uid);
+        cb?.('synced');
+      } else {
+        if (!pushTimers.has(uid)) {
+          void pushToCloud(uid, cb);
         }
-      }, backoffMs) as unknown as number;
-      retryTimers.set(uid, rTimer);
+      }
+    } catch (e) {
+      console.error('Cloud sync (push) failed:', e);
+      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      cb?.(isOnline ? 'error' : 'offline');
+
+      const count = (retryCounts.get(uid) ?? 0) + 1;
+      retryCounts.set(uid, count);
+      if (count <= 5) {
+        const backoffMs = Math.min(1000 * Math.pow(2, count - 1), 30000);
+        const rTimer = setTimeout(async () => {
+          retryTimers.delete(uid);
+          const isRec = await isReconciled(uid);
+          const isD = await isDirty(uid);
+          if (isRec && isD) {
+            await executePush(uid, cb);
+          }
+        }, backoffMs) as unknown as number;
+        retryTimers.set(uid, rTimer);
+      }
+    }
+  })();
+
+  inFlightPushes.set(uid, pushPromise);
+  try {
+    await pushPromise;
+  } finally {
+    if (inFlightPushes.get(uid) === pushPromise) {
+      inFlightPushes.delete(uid);
     }
   }
 }
@@ -191,14 +219,13 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
  * Safe to call after every local mutation — call it liberally; it no-ops when signed out or when
  * Firestore isn't configured, and network/offline failures never throw back into the caller.
  */
-export function pushToCloud(uid: string, onStatus?: (s: SyncStatus) => void) {
+export function pushToCloud(uid: string, onStatus?: (s: SyncStatus) => void): Promise<void> {
   const fs = getFirestoreInstance();
-  if (!fs || !uid) return;
+  if (!fs || !uid) return Promise.resolve();
   activeUids.add(uid);
   if (onStatus) statusListeners.set(uid, onStatus);
   const cb = onStatus ?? statusListeners.get(uid);
 
-  setDirty(uid, true);
   const existing = pushTimers.get(uid);
   if (existing) clearTimeout(existing);
 
@@ -213,6 +240,8 @@ export function pushToCloud(uid: string, onStatus?: (s: SyncStatus) => void) {
     await executePush(uid, cb);
   }, PUSH_DEBOUNCE_MS) as unknown as number;
   pushTimers.set(uid, timer);
+
+  return markDirty(uid).then(() => {});
 }
 
 /** Flush any pending debounced push immediately (e.g. on logout or pagehide). */
@@ -232,9 +261,10 @@ export async function flushPendingPush(uid: string): Promise<void> {
   const reconciled = await isReconciled(uid);
   if (!reconciled) return;
   try {
+    const rev = await getDirtyRevision(uid);
     const local = await userData(uid);
     await setDoc(userDoc(fsInstance, uid), { ...local, updatedAt: new Date().toISOString() });
-    await setDirty(uid, false);
+    await clearDirty(uid, rev);
   } catch (e) {
     console.error('Cloud sync (flush) failed:', e);
   }
@@ -263,4 +293,5 @@ export function _clearAllPendingPushesForTesting() {
   retryCounts.clear();
   activeUids.clear();
   statusListeners.clear();
+  inFlightPushes.clear();
 }
