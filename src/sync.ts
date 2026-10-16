@@ -6,6 +6,7 @@ import { doc, getDocFromServer, setDoc, type Firestore } from 'firebase/firestor
 import { firestore } from './firebase';
 import { isDirty, isReconciled, restore, setDirty, setReconciled, userData, getDirtyRevision, clearDirty, markDirty } from './db';
 import type { Attendance, Settings, Subject, TimetableEntry } from './types';
+import { isLocalUid } from './storage-mode';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
 /** What a login reconcile actually did, so the caller never has to guess from a boolean. */
@@ -41,6 +42,7 @@ const inFlightPushes = new Map<string, Promise<void>>();
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     for (const uid of activeUids) {
+      if (isLocalUid(uid)) continue;
       void (async () => {
         const reconciled = await isReconciled(uid);
         const dirty = await isDirty(uid);
@@ -65,8 +67,9 @@ function userDoc(fs: Firestore, uid: string) {
 }
 
 export async function executePush(uid: string, cb?: (s: SyncStatus) => void): Promise<void> {
+  if (!uid || isLocalUid(uid)) return;
   const fsInstance = getFirestoreInstance();
-  if (!fsInstance || !uid) return;
+  if (!fsInstance) return;
 
   const running = inFlightPushes.get(uid);
   if (running) {
@@ -157,6 +160,7 @@ export async function executePush(uid: string, cb?: (s: SyncStatus) => void): Pr
  */
 const inFlight = new Map<string, Promise<SyncResult>>();
 export function syncOnLogin(uid: string, onStatus?: (s: SyncStatus) => void): Promise<SyncResult> {
+  if (!uid || isLocalUid(uid)) return Promise.resolve('skipped');
   const running = inFlight.get(uid);
   if (running) return running;
   const started = reconcile(uid, onStatus).finally(() => inFlight.delete(uid));
@@ -171,6 +175,7 @@ export function getLastSyncErrorReason(): SyncErrorReason {
 }
 
 async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promise<SyncResult> {
+  if (!uid || isLocalUid(uid)) return 'skipped';
   const fs = getFirestoreInstance();
   if (!fs) return 'skipped';
   try {
@@ -277,8 +282,9 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
  * Firestore isn't configured, and network/offline failures never throw back into the caller.
  */
 export function pushToCloud(uid: string, onStatus?: (s: SyncStatus) => void): Promise<void> {
+  if (!uid || isLocalUid(uid)) return Promise.resolve();
   const fs = getFirestoreInstance();
-  if (!fs || !uid) return Promise.resolve();
+  if (!fs) return Promise.resolve();
   activeUids.add(uid);
   if (onStatus) statusListeners.set(uid, onStatus);
   const cb = onStatus ?? statusListeners.get(uid);
@@ -303,6 +309,7 @@ export function pushToCloud(uid: string, onStatus?: (s: SyncStatus) => void): Pr
 
 /** Flush any pending debounced push immediately (e.g. on logout or pagehide). */
 export async function flushPendingPush(uid: string): Promise<void> {
+  if (!uid || isLocalUid(uid)) return;
   const existing = pushTimers.get(uid);
   if (existing) {
     clearTimeout(existing);
@@ -314,7 +321,7 @@ export async function flushPendingPush(uid: string): Promise<void> {
     retryTimers.delete(uid);
   }
   const fsInstance = getFirestoreInstance();
-  if (!fsInstance || !uid) return;
+  if (!fsInstance) return;
   const reconciled = await isReconciled(uid);
   if (!reconciled) return;
   try {
