@@ -194,26 +194,34 @@ function AppContent() {
    // flight at once. Only the newest one is allowed to write state; an older one finishing late
    // used to overwrite fresh data with the snapshot it read before the cloud pull landed.
    const mine=++run;
-   if(!u){setUser(null);setLoading(false);setSyncStatus('idle');setRestoring(false);setSyncFailed(false);setQuarantineNotice(null);setPage('home');setSubjects([]);setRecords([]);setTable([]);setSettings(null);return}
-    setLoading(true);
+   if(!u){
+     if(run!==mine)return;
+     setUser(null);setLoading(false);setSyncStatus('idle');setRestoring(false);setSyncFailed(false);setQuarantineNotice(null);setPage('home');setSubjects([]);setRecords([]);setTable([]);setSettings(null);
+     return;
+   }
+   if(run!==mine)return;
+   setLoading(true);
    const show=async()=>{const d=await userData(u.uid);if(run!==mine)return;setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings)};
    await put('users',{uid:u.uid,email:u.email??'',name:u.displayName??'',photoURL:u.photoURL??'',updatedAt:new Date().toISOString()});
+   if(run!==mine)return;
    await show();
-    setUser(u);setLoading(false);
-    // Reconcile against the cloud. On a device that has no local copy yet this is the only source
+   if(run!==mine)return;
+   setUser(u);setLoading(false);
+   // Reconcile against the cloud. On a device that has no local copy yet this is the only source
    // of the user's data, so the UI says it is restoring rather than showing the empty state.
-   if(run===mine)setRestoring(true);
+   if(run!==mine)return;
+   setRestoring(true);
    const syncRes = await syncOnLogin(u.uid,setSyncStatus);
    // Always re-read, whatever syncOnLogin reports. It writes to IndexedDB before it can fail, so
    // keying the re-read off a success flag left the pulled data on disk but not on screen until
    // the user refreshed the page by hand.
+   if(run!==mine)return;
    await show();
-   if(run===mine){
-     setRestoring(false);
-     setSyncFailed(syncRes==='failed');
-     const qr = getLastQuarantineReport();
-     if(qr && qr.totalQuarantined > 0) setQuarantineNotice(qr);
-   }
+   if(run!==mine)return;
+   setRestoring(false);
+   setSyncFailed(syncRes==='failed');
+   const qr = getLastQuarantineReport();
+   if(qr && qr.totalQuarantined > 0) setQuarantineNotice(qr);
  })},[]);
  // `system` was written straight to data-theme, where it matched no CSS rule — so the default
  // setting never went dark whatever the OS said. Resolve it here instead, and follow the OS live.
