@@ -37,7 +37,23 @@ npm test bug004
 ```bash
 # Run TypeScript typecheck and Vite production build
 npm run build
+
+# Build and sync native Android project
+npm run build:android
 ```
+
+---
+
+## Android Application & Native Builds
+
+Self Attendance is packaged as a native Android application using Capacitor 8, delivering the exact same dark "Midnight Slate Utility" UI with native mobile enhancements:
+
+- **Storage Mode Chooser**: Choose between **Local-Only** (100% private, no account required, zero Firebase calls) and **Cloud Sync** (sign in with Google to sync across devices). Switch modes anytime in Settings with safety snapshots and a 3-way conflict resolver.
+- **Native Android Integration**: Native hardware back button navigation, dark status bar (`#0f172a`), safe area inset padding, and Android native share sheet for backups and Excel reports.
+- **On-Device Gemini API Key**: Configure your Google Gemini API key directly in Settings; stored on-device in IndexedDB so the binary never carries embedded secrets.
+- **Automated CI / CD**: Built automatically via GitHub Actions as Debug APK, Release APK, and Play Store AAB.
+
+For complete local build steps, keystore signing, and GitHub Secrets configuration, see [**ANDROID.md**](./ANDROID.md).
 
 ---
 
