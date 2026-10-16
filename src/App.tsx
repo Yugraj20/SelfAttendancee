@@ -7,7 +7,7 @@ import { auth, firebaseConfigured, logout, signIn, type AuthUser } from './fireb
 import { cancelPendingPush, flushPendingPush, getLastSyncErrorReason, pushToCloud, syncOnLogin, type SyncStatus } from './sync';
 import { clearUser, getLastQuarantineReport, id, importAttendanceData, importTimetableData, put, remove, restore, userData, type QuarantineReport } from './db';
 import { dateISO, overall, subjectStats, trend } from './math';
-import { extractAttendance, extractTimetable } from './gemini';
+import { extractAttendance, extractTimetable, getGeminiApiKey, setGeminiApiKey } from './gemini';
 import { analyse, annotate, buildWrites, summarise, validISO, willImport } from './attendance-import';
 import { makeBackup, parseBackup } from './backup';
 import type { Attendance, AttendanceStatus, BackupPayload, DetectedEntry, DetectedStatus, ReviewRow, Settings, Subject, SubjectGroup, TimetableEntry } from './types';
@@ -743,6 +743,7 @@ function SkeletonStats(){
 }
 export function SettingsPage({user,settings,subjects,records,table,syncStatus,onSettings,onBackup,onRestore,onImportAttendance,onClear,onLogout}:{user:AuthUser,settings:Settings,subjects:Subject[],records:Attendance[],table:TimetableEntry[],syncStatus:SyncStatus,onSettings:(s:Settings)=>void,onBackup:()=>void,onRestore:()=>void,onImportAttendance:()=>void,onClear:()=>void,onLogout:()=>void}){
   const [targetDraft, setTargetDraft] = useState(() => String(settings.defaultTarget));
+  const [geminiKeyDraft, setGeminiKeyDraft] = useState(() => getGeminiApiKey());
 
   useEffect(() => {
     setTargetDraft(String(settings.defaultTarget));
@@ -780,6 +781,21 @@ export function SettingsPage({user,settings,subjects,records,table,syncStatus,on
     <section className="card">
       <h2>Appearance</h2>
       <div className="themes">{(['system','light','dark','amoled'] as const).map(t=><button key={t} className={settings.theme===t?'picked':''} onClick={()=>onSettings({...settings,theme:t})}>{t==='amoled'?<Moon/>:null}{t}</button>)}</div>
+    </section>
+    <section className="card">
+      <h2>AI Configuration</h2>
+      <label>Gemini API Key
+        <input
+          type="password"
+          placeholder="Enter Gemini API key"
+          value={geminiKeyDraft}
+          onChange={e => {
+            setGeminiKeyDraft(e.target.value);
+            setGeminiApiKey(e.target.value);
+          }}
+        />
+      </label>
+      <p className="muted">Stored locally on this device only. Used for AI Timetable and Attendance imports.</p>
     </section>
     <section className="card">
       <h2>Your data</h2>

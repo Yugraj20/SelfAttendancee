@@ -145,9 +145,52 @@ async function withTimeoutAndRetry<T>(fn: () => Promise<T>, timeoutMs = 30000, m
   throw lastErr;
 }
 
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
+export function getGeminiApiKey(): string {
+  try {
+    const customKey = localStorage.getItem('selfattendance_gemini_api_key');
+    if (customKey && customKey.trim()) return customKey.trim();
+  } catch {}
+  return (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+}
+
+export function setGeminiApiKey(key: string): void {
+  try {
+    if (!key || !key.trim()) {
+      localStorage.removeItem('selfattendance_gemini_api_key');
+    } else {
+      localStorage.setItem('selfattendance_gemini_api_key', key.trim());
+    }
+  } catch {}
+}
+
+export function classifyGeminiError(error: unknown): Error {
+  if (error instanceof Error) {
+    const msg = error.message || '';
+    if (msg.includes('AI import is not configured') || msg.includes('missing key') || msg.includes('API key is missing')) {
+      return new Error('Gemini API key is missing. Add an API key in Settings.');
+    }
+    if (/429|RESOURCE_EXHAUSTED|quota/i.test(msg)) {
+      return new Error('Gemini API quota exceeded (Rate limit / 429). Please check your quota or try again later.');
+    }
+    if (/API_KEY_INVALID|invalid.*api.*key|api.*key.*not.*valid|400.*API_KEY|403|PERMISSION_DENIED/i.test(msg)) {
+      return new Error('Invalid Gemini API key. Please verify your API key in Settings.');
+    }
+    if (/timed out|timeout|fetch|NetworkError|Failed to fetch|ECONNREFUSED|ENOTFOUND/i.test(msg)) {
+      return new Error('Network error or request timed out while contacting Gemini. Check your internet connection.');
+    }
+    if (/JSON|SyntaxError|Invalid JSON response structure/i.test(msg)) {
+      return new Error('Gemini returned an invalid response structure. Please check the file and try again.');
+    }
+    return error;
+  }
+  return new Error('Could not analyze file with Gemini. Check your connection and try again.');
+}
+
 export async function extractTimetable(file: File): Promise<DetectedEntry[]> {
-  const key = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!key) throw new Error('AI import is not configured. Add a restricted Gemini key or connect a secure proxy.');
+  const key = getGeminiApiKey();
+  if (!key) throw classifyGeminiError(new Error('AI import is not configured. Add an API key in Settings.'));
   if (file.size > 15 * 1024 * 1024) throw new Error('File is too large. Please use a file under 15 MB.');
   const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
   if (!allowed.includes(file.type)) throw new Error('Use a PDF, PNG, JPG, JPEG, or WEBP timetable.');
@@ -161,7 +204,7 @@ export async function extractTimetable(file: File): Promise<DetectedEntry[]> {
   try {
     const raw = await withTimeoutAndRetry(async () => {
       const model = new GoogleGenerativeAI(key).getGenerativeModel({
-        model: 'gemini-3.5-flash-lite',
+        model: GEMINI_MODEL,
         generationConfig: { responseMimeType: 'application/json' },
       });
       const result = await model.generateContent([
@@ -171,13 +214,18 @@ export async function extractTimetable(file: File): Promise<DetectedEntry[]> {
       return result.response.text();
     });
 
-    const data = JSON.parse(raw);
+    let data: unknown;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error('Invalid JSON response structure');
+    }
     const validated = validateTimetableResponse(data);
     if (!validated.entries.length) throw new Error('No timetable entries were detected. Try a clearer file.');
     return validated.entries;
   } catch (e) {
     if (e instanceof Error && e.message.includes('No timetable')) throw e;
-    throw new Error('We could not confidently read this timetable. Check your connection, key restrictions, or upload a clearer file.');
+    throw classifyGeminiError(e);
   }
 }
 
@@ -198,8 +246,8 @@ Rules:
 - "warnings": short plain-English notes about anything in the file you could not interpret. Use an empty array when there is nothing to report.`;
 
 export async function extractAttendance(file: File): Promise<ParsedAttendance> {
-  const key = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!key) throw new Error('AI import is not configured. Add a restricted Gemini key or connect a secure proxy.');
+  const key = getGeminiApiKey();
+  if (!key) throw classifyGeminiError(new Error('AI import is not configured. Add an API key in Settings.'));
   const isTxt = file.name.toLowerCase().endsWith('.txt') && (!file.type || file.type === 'text/plain');
   if (!isTxt) throw new Error('Attendance import needs a plain .txt file. Export or paste your attendance into a text file and try again.');
   if (file.size > 2 * 1024 * 1024) throw new Error('That file is too large. Please use a .txt file under 2 MB.');
@@ -213,7 +261,7 @@ export async function extractAttendance(file: File): Promise<ParsedAttendance> {
   try {
     raw = await withTimeoutAndRetry(async () => {
       const model = new GoogleGenerativeAI(key).getGenerativeModel({
-        model: 'gemini-3.5-flash-lite',
+        model: GEMINI_MODEL,
         generationConfig: { responseMimeType: 'application/json' },
       });
       const result = await model.generateContent([
@@ -222,15 +270,15 @@ export async function extractAttendance(file: File): Promise<ParsedAttendance> {
       ]);
       return result.response.text();
     });
-  } catch {
-    throw new Error('We could not reach Gemini or could not read its reply. Check your connection and key restrictions, then try the analysis again.');
+  } catch (e) {
+    throw classifyGeminiError(e);
   }
 
   let data: { records?: unknown; warnings?: unknown };
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error('Gemini returned an invalid response. Check your connection and retry.');
+    throw classifyGeminiError(new Error('Invalid JSON response structure'));
   }
 
   const validated = validateAttendanceResponse(data);

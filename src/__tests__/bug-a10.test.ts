@@ -73,7 +73,7 @@ describe('BUG-A10: re-importing timetable effect on attendance records and stats
 
     const data = await userData(uid);
     const date = '2026-04-13';
-    const sessionId = 'tt-2';
+    const sessionId: string = 'tt-2';
 
     // Without fix: markNow would not find att-1 when sessionId is tt-2
     const oldWithoutFix = data.attendance.find(r => r.subjectId === sub.id && r.date === date && r.sessionId === sessionId)
