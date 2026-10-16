@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, Cell, ResponsiveContainer, BarChart, Ba
 import { ThinkingOrb } from 'thinking-orbs';
 import { auth, firebaseConfigured, logout, signIn, type AuthUser } from './firebase';
 import { cancelPendingPush, flushPendingPush, getLastSyncErrorReason, pushToCloud, syncOnLogin, type SyncStatus } from './sync';
-import { clearUser, getLastQuarantineReport, id, importAttendanceData, importTimetableData, put, remove, restore, userData, type QuarantineReport } from './db';
+import { clearUser, getLastQuarantineReport, id, importAttendanceData, importTimetableData, isReconciled, put, remove, restore, userData, type QuarantineReport } from './db';
 import { dateISO, overall, subjectStats, trend } from './math';
 import { extractAttendance, extractTimetable, getGeminiApiKey, setGeminiApiKey } from './gemini';
 import { analyse, annotate, buildWrites, summarise, validISO, willImport } from './attendance-import';
@@ -18,6 +18,13 @@ import { ExcelExportModal } from './components/ExcelExportModal';
 import { QuickMarkModal } from './components/QuickMarkModal';
 import { SubjectsPage } from './components/SubjectsPage';
 import { useToday } from './hooks/useToday';
+import { StorageChooser } from './components/StorageChooser';
+import { ConflictModal } from './components/ConflictModal';
+import { StorageMode, LOCAL_USER, getInitialStorageMode, setStorageMode, isLocalUid, LOCAL_UID } from './storage-mode';
+import { createPreSyncSnapshot, executeConflictResolution, mergeUserData, type ConflictChoice, type UserDataset } from './sync-conflict';
+import { doc, getDocFromServer } from 'firebase/firestore';
+import { firestore } from './firebase';
+import { HardDrive, Cloud } from 'lucide-react';
 
 type Page='home'|'subjects'|'calendar'|'timetable'|'statistics'|'settings';
 const colors=['#6d5dfc','#20c997','#ff8d5c','#e95d9a','#3989ff','#e0a526'];
@@ -168,72 +175,137 @@ export class ErrorBoundary extends Component<{children: ReactNode}, {hasError: b
 }
 
 function AppContent() {
- const [user,setUser]=useState<AuthUser|null>(null),[loading,setLoading]=useState(true),[page,setPage]=useState<Page>('home');
- const [subjects,setSubjects]=useState<Subject[]>([]),[records,setRecords]=useState<Attendance[]>([]),[table,setTable]=useState<TimetableEntry[]>([]),[settings,setSettings]=useState<Settings|null>(null);
- const [modal,setModal]=useState<'subject'|'entry'|'import'|'attendance-import'|'backup'|'restore'|'clear'|'excel-export'|'quick-mark'|null>(null),[editSubject,setEditSubject]=useState<Subject|null>(null),[editEntry,setEditEntry]=useState<TimetableEntry|null>(null),[toast,setToast]=useState('');
- const [syncStatus,setSyncStatus]=useState<SyncStatus>('idle'),[restoring,setRestoring]=useState(false),[jumpToday,setJumpToday]=useState(false),[syncFailed,setSyncFailed]=useState(false),[quarantineNotice,setQuarantineNotice]=useState<QuarantineReport|null>(null);
- const uid=user?.uid ?? '';
- // The toast stays mounted so it can animate out (transitions.dev 22-toast); the ref holds the
- // last message so the box is not empty while it leaves.
- const shownToast=useRef('');
- if(toast)shownToast.current=toast;
- // Real undo: `showUndo` drives whether the toast currently in view offers the action, while
- // `shownUndo` mirrors it through the close animation the same way `shownToast` does. The actual
- // record to restore lives in a ref (not state) since it never needs to trigger a render itself.
- const [showUndo,setShowUndo]=useState(false);
- const shownUndo=useRef(false);
- if(toast)shownUndo.current=showUndo;
- const undoTimer=useRef<number>();
- const pendingUndo=useRef<{subjectId:string,date:string,sessionId:string,prev?:Attendance}|null>(null);
- const flash=(m:string,undo=false)=>{
-   setToast(m);setShowUndo(undo);
-   if(undoTimer.current)window.clearTimeout(undoTimer.current);
-   undoTimer.current=window.setTimeout(()=>{setToast('');setShowUndo(false);if(undo)pendingUndo.current=null},undo?6500:3500);
- };
- const prevUid=useRef<string>('');
- useEffect(()=>{ if(!auth){setLoading(false);return} let run=0; return onAuthStateChanged(auth,async u=>{
-   // StrictMode mounts, unmounts and remounts in development, so two auth callbacks can be in
-   // flight at once. Only the newest one is allowed to write state; an older one finishing late
-   // used to overwrite fresh data with the snapshot it read before the cloud pull landed.
-   const mine=++run;
-   if(!u){
-     if(run!==mine)return;
-     if(prevUid.current){
-       cancelPendingPush(prevUid.current);
-       prevUid.current='';
-     }
-     cancelPendingPush();
-     setUser(null);setLoading(false);setSyncStatus('idle');setRestoring(false);setSyncFailed(false);setQuarantineNotice(null);setPage('home');setSubjects([]);setRecords([]);setTable([]);setSettings(null);
-     return;
-   }
-   if(prevUid.current && prevUid.current !== u.uid){
-     cancelPendingPush(prevUid.current);
-   }
-   prevUid.current = u.uid;
-   if(run!==mine)return;
-   setLoading(true);
-   const show=async()=>{const d=await userData(u.uid);if(run!==mine)return;setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings)};
-   await put('users',{uid:u.uid,email:u.email??'',name:u.displayName??'',photoURL:u.photoURL??'',updatedAt:new Date().toISOString()});
-   if(run!==mine)return;
-   await show();
-   if(run!==mine)return;
-   setUser(u);setLoading(false);
-   // Reconcile against the cloud. On a device that has no local copy yet this is the only source
-   // of the user's data, so the UI says it is restoring rather than showing the empty state.
-   if(run!==mine)return;
-   setRestoring(true);
-   const syncRes = await syncOnLogin(u.uid,setSyncStatus);
-   // Always re-read, whatever syncOnLogin reports. It writes to IndexedDB before it can fail, so
-   // keying the re-read off a success flag left the pulled data on disk but not on screen until
-   // the user refreshed the page by hand.
-   if(run!==mine)return;
-   await show();
-   if(run!==mine)return;
-   setRestoring(false);
-   setSyncFailed(syncRes==='failed');
-   const qr = getLastQuarantineReport();
-   if(qr && qr.totalQuarantined > 0) setQuarantineNotice(qr);
- })},[]);
+  const [storageMode, setStorageModeState] = useState<StorageMode | null>(() => getInitialStorageMode());
+  const [user,setUser]=useState<AuthUser|null>(null),[loading,setLoading]=useState(true),[page,setPage]=useState<Page>('home');
+  const [subjects,setSubjects]=useState<Subject[]>([]),[records,setRecords]=useState<Attendance[]>([]),[table,setTable]=useState<TimetableEntry[]>([]),[settings,setSettings]=useState<Settings|null>(null);
+  const [modal,setModal]=useState<'subject'|'entry'|'import'|'attendance-import'|'backup'|'restore'|'clear'|'excel-export'|'quick-mark'|null>(null),[editSubject,setEditSubject]=useState<Subject|null>(null),[editEntry,setEditEntry]=useState<TimetableEntry|null>(null),[toast,setToast]=useState('');
+  const [syncStatus,setSyncStatus]=useState<SyncStatus>('idle'),[restoring,setRestoring]=useState(false),[jumpToday,setJumpToday]=useState(false),[syncFailed,setSyncFailed]=useState(false),[quarantineNotice,setQuarantineNotice]=useState<QuarantineReport|null>(null);
+  const [conflictState, setConflictState] = useState<{
+    cloudUid: string;
+    authUser: AuthUser;
+    localData: UserDataset;
+    cloudData: UserDataset;
+  } | null>(null);
+  const uid=user?.uid ?? (storageMode === 'local' ? LOCAL_UID : '');
+  // The toast stays mounted so it can animate out (transitions.dev 22-toast); the ref holds the
+  // last message so the box is not empty while it leaves.
+  const shownToast=useRef('');
+  if(toast)shownToast.current=toast;
+  // Real undo: `showUndo` drives whether the toast currently in view offers the action, while
+  // `shownUndo` mirrors it through the close animation the same way `shownToast` does. The actual
+  // record to restore lives in a ref (not state) since it never needs to trigger a render itself.
+  const [showUndo,setShowUndo]=useState(false);
+  const shownUndo=useRef(false);
+  if(toast)shownUndo.current=showUndo;
+  const undoTimer=useRef<number>();
+  const pendingUndo=useRef<{subjectId:string,date:string,sessionId:string,prev?:Attendance}|null>(null);
+  const flash=(m:string,undo=false)=>{
+    setToast(m);setShowUndo(undo);
+    if(undoTimer.current)window.clearTimeout(undoTimer.current);
+    undoTimer.current=window.setTimeout(()=>{setToast('');setShowUndo(false);if(undo)pendingUndo.current=null},undo?6500:3500);
+  };
+  const prevUid=useRef<string>('');
+
+  useEffect(() => {
+    if (storageMode !== 'local') return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const d = await userData(LOCAL_UID);
+      if (cancelled) return;
+      setSubjects(d.subjects);
+      setRecords(d.attendance);
+      setTable(d.timetable);
+      setSettings(d.settings);
+      setUser(LOCAL_USER);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [storageMode]);
+
+  useEffect(()=>{
+    if (storageMode !== 'cloud') {
+      if (storageMode === null) setLoading(false);
+      return;
+    }
+    if(!auth){setLoading(false);return}
+    let run=0;
+    return onAuthStateChanged(auth,async u=>{
+      const mine=++run;
+      if(!u){
+        if(run!==mine)return;
+        if(prevUid.current){
+          cancelPendingPush(prevUid.current);
+          prevUid.current='';
+        }
+        cancelPendingPush();
+        setUser(null);setLoading(false);setSyncStatus('idle');setRestoring(false);setSyncFailed(false);setQuarantineNotice(null);setPage('home');setSubjects([]);setRecords([]);setTable([]);setSettings(null);
+        return;
+      }
+      if(prevUid.current && prevUid.current !== u.uid){
+        cancelPendingPush(prevUid.current);
+      }
+      prevUid.current = u.uid;
+      if(run!==mine)return;
+      setLoading(true);
+
+      const localDeviceData = await userData(LOCAL_UID);
+      const hasLocalDeviceData = localDeviceData.subjects.length > 0 || localDeviceData.attendance.length > 0 || localDeviceData.timetable.length > 0;
+
+      let cloudDocData: UserDataset | null = null;
+      if (firestore) {
+        try {
+          const snap = await getDocFromServer(doc(firestore, 'users', u.uid));
+          if (snap.exists()) {
+            cloudDocData = snap.data() as UserDataset;
+          }
+        } catch {}
+      }
+
+      const hasCloudData = Boolean(
+        cloudDocData &&
+        (cloudDocData.subjects?.length > 0 || cloudDocData.attendance?.length > 0 || cloudDocData.timetable?.length > 0)
+      );
+
+      const isRec = await isReconciled(u.uid);
+      const existingUData = await userData(u.uid);
+      const hasExistingUData = existingUData.subjects.length > 0 || existingUData.attendance.length > 0 || existingUData.timetable.length > 0;
+
+      const conflictLocalData = hasLocalDeviceData ? localDeviceData : (!isRec && hasExistingUData) ? existingUData : null;
+
+      if (conflictLocalData && hasCloudData && cloudDocData) {
+        if (run !== mine) return;
+        setConflictState({
+          cloudUid: u.uid,
+          authUser: u,
+          localData: conflictLocalData,
+          cloudData: cloudDocData,
+        });
+        setLoading(false);
+        return;
+      } else if (hasLocalDeviceData && !hasCloudData) {
+        await restore(u.uid, localDeviceData, true, true, false);
+        await clearUser(LOCAL_UID);
+      }
+
+      const show=async()=>{const d=await userData(u.uid);if(run!==mine)return;setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings)};
+      await put('users',{uid:u.uid,email:u.email??'',name:u.displayName??'',photoURL:u.photoURL??'',updatedAt:new Date().toISOString()});
+      if(run!==mine)return;
+      await show();
+      if(run!==mine)return;
+      setUser(u);setLoading(false);
+      if(run!==mine)return;
+      setRestoring(true);
+      const syncRes = await syncOnLogin(u.uid,setSyncStatus);
+      if(run!==mine)return;
+      await show();
+      if(run!==mine)return;
+      setRestoring(false);
+      setSyncFailed(syncRes==='failed');
+      const qr = getLastQuarantineReport();
+      if(qr && qr.totalQuarantined > 0) setQuarantineNotice(qr);
+    });
+  },[storageMode]);
  // `system` was written straight to data-theme, where it matched no CSS rule — so the default
  // setting never went dark whatever the OS said. Resolve it here instead, and follow the OS live.
  // The dark/light class is what keeps <ThinkingOrb theme="auto"> in step: it reads a dark or light
@@ -348,10 +420,66 @@ function AppContent() {
  };
  const saveEntry=async(e:TimetableEntry,newSubject?:Subject)=>{if(newSubject)await put('subjects',newSubject);await put('timetable',e);await reload();setModal(null);flash('Timetable saved')};
  const retryLoginSync=async()=>{if(!uid)return;setSyncFailed(false);setRestoring(true);const res=await syncOnLogin(uid,setSyncStatus);const d=await userData(uid);setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings);setRestoring(false);setSyncFailed(res==='failed')};
+  const handleSelectMode = async (mode: StorageMode) => {
+    await setStorageMode(mode);
+    setStorageModeState(mode);
+    if (mode === 'local') {
+      setUser(LOCAL_USER);
+    } else {
+      setUser(null);
+    }
+  };
+
+  const switchToCloud = async () => {
+    try {
+      await signIn();
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Sign in failed');
+    }
+  };
+
+  const switchToLocal = async () => {
+    if (uid && uid !== LOCAL_UID) {
+      try {
+        await Promise.race([flushPendingPush(uid), new Promise(r => setTimeout(r, 2000))]);
+      } catch {}
+      cancelPendingPush(uid);
+      const currentData = await userData(uid);
+      await restore(LOCAL_UID, currentData, true, true, false);
+    }
+    await logout();
+    await setStorageMode('local');
+    setStorageModeState('local');
+    setUser(LOCAL_USER);
+    setSyncStatus('idle');
+    flash('Switched to Local mode. Data preserved on device.');
+  };
+
+  const handleConflictResolution = async (choice: ConflictChoice) => {
+    if (!conflictState) return;
+    const { cloudUid, authUser, localData, cloudData } = conflictState;
+    setLoading(true);
+    try {
+      await executeConflictResolution(cloudUid, choice, localData, cloudData);
+      await clearUser(LOCAL_UID);
+      await setStorageMode('cloud');
+      setStorageModeState('cloud');
+      setUser(authUser);
+      await reload(false);
+      flash('Sync conflict resolved');
+    } catch {
+      flash('Failed to resolve sync conflict');
+    } finally {
+      setConflictState(null);
+      setLoading(false);
+    }
+  };
+
  const stats=useMemo(()=>overall(subjects,records),[subjects,records]);
  const navigate=(p:Page)=>setPage(p);
+ if (storageMode === null) return <StorageChooser onSelectMode={handleSelectMode} />;
  if(loading)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your attendance…</div>;
- if(!user)return <Login />;
+ if(!user)return <Login onBack={() => { void setStorageMode(null); setStorageModeState(null); }} />;
   if(!settings)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your settings…</div>;
   if(syncFailed&&!subjects.length&&!records.length){
     const r=getLastSyncErrorReason();
@@ -364,21 +492,38 @@ function AppContent() {
   }
  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
- return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
+ return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
  {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
  {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
- {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{const targetUid=uid||prevUid.current;if(typeof navigator!=='undefined'&&navigator.onLine&&targetUid){try{await Promise.race([flushPendingPush(targetUid),new Promise(r=>setTimeout(r,2000))])}catch{}}if(targetUid)cancelPendingPush(targetUid);cancelPendingPush();prevUid.current='';await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
+ {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} storageMode={storageMode} onSwitchToCloud={switchToCloud} onSwitchToLocal={switchToLocal} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{const targetUid=uid||prevUid.current;if(typeof navigator!=='undefined'&&navigator.onLine&&targetUid){try{await Promise.race([flushPendingPush(targetUid),new Promise(r=>setTimeout(r,2000))])}catch{}}if(targetUid)cancelPendingPush(targetUid);cancelPendingPush();prevUid.current='';await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
  </main><FloatingNav activeKey={page} onNavigate={navigate}/><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
  {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Clear local data?</h2><p>This removes attendance, subjects and timetable for this account from this device. Because you are signed in, your cloud copy will be restored immediately to keep your sync state consistent.</p>
  <button className="danger full" onClick={async()=>{await clearUser(uid);if(user){await syncOnLogin(user.uid,setSyncStatus);}await reload(true);setModal(null);flash(user?'Local data cleared and cloud copy restored':'Local data cleared')}}>Clear and restore from cloud</button></Modal>}
  {modal==='excel-export'&&<ExcelExportModal subjects={subjects} records={records} table={table} currentYear={new Date().getFullYear()} currentMonth={new Date().getMonth()} studentName={user.displayName??''} studentEmail={user.email??''} onSuccess={(fn,cnt)=>flash(`Exported ${cnt} records to ${fn}`)} onClose={()=>setModal(null)}/>}
  {modal==='quick-mark'&&<QuickMarkModal subjects={subjects} records={records} table={table} onMark={mark} onNavigateHome={()=>{setModal(null);navigate('home')}} onClose={()=>setModal(null)}/>}
+ {conflictState && (
+   <ConflictModal
+     localData={conflictState.localData}
+     cloudData={conflictState.cloudData}
+     onResolve={handleConflictResolution}
+     onClose={() => setConflictState(null)}
+   />
+ )}
  </div>
 }
 function Brand(){return <div className="brand"><span>✓</span><b>Self Attendance</b></div>}
-function SyncBadge({status}:{status:SyncStatus}){if(status==='idle')return null;const reason=getLastSyncErrorReason();const errorLabel=reason==='payload_too_large'?'Limit exceeded (>1MB)':'Sync paused — retrying';const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:errorLabel}[status];return <span className={`sync-badge ${status}`} title={reason==='payload_too_large'?"Data exceeds Firestore's 1MB limit. Export or remove older records.":undefined}>{status==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>}
+function SyncBadge({status, mode}:{status:SyncStatus, mode?: StorageMode | null}){
+  if (mode === 'local') {
+    return <span className="sync-badge local"><i className="dot"/>Local only</span>;
+  }
+  if(status==='idle')return null;
+  const reason=getLastSyncErrorReason();
+  const errorLabel=reason==='payload_too_large'?'Limit exceeded (>1MB)':'Sync paused — retrying';
+  const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:errorLabel}[status];
+  return <span className={`sync-badge ${status}`} title={reason==='payload_too_large'?"Data exceeds Firestore's 1MB limit. Export or remove older records.":undefined}>{status==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>
+}
 // Seven weeks of a term, read as six weekday rows — one square per scheduled class. Fixed rather
 // than random so the screen animates identically on every load, and chosen so the figures agree
 // with each other: 31 present, 6 absent and 5 not held is exactly the 22-of-24 and 9-of-13 split
@@ -392,7 +537,7 @@ const REPO='https://github.com/Yugraj20/SelfAttendancee';
 // inline. Everything shares one stroked 24px box.
 function Stroke({children,width=2}:{children:React.ReactNode,width?:number}){return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>}
 function GoogleMark(){return <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/><path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/><path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/></svg>}
-function Login(){
+function Login({onBack}:{onBack?:()=>void}){
   const [error,setError]=useState(''),[busy,setBusy]=useState(false);
   const surface=useRef<HTMLDivElement>(null);
   // Pointer position feeds the ambient spotlight through CSS custom properties, so the effect
@@ -407,7 +552,7 @@ function Login(){
           <span className="login-mark"><Stroke width={3.2}><path d="M20 6 9 17l-5-5"/></Stroke></span>
           <span><b>Self Attendance</b><small>Smart class and bunk engine</small></span>
         </div>
-        <span className="login-live"><i/>Works offline</span>
+        {onBack&&<button className="text" onClick={onBack} style={{fontSize:13,display:'inline-flex',alignItems:'center',gap:4}}>← Back to options</button>}
       </header>
       <div className="login-grid">
         <section className="login-lead">
@@ -741,7 +886,39 @@ function SkeletonStats(){
     <section className="ring-grid">{[0,1,2].map(i=><article key={i} className="card ring-card"><Skel w="64px" h={64}/><div className="skel-ring-text"><Skel w="58%" h={14}/><Skel w="40%" h={10}/></div></article>)}</section>
   </div>
 }
-export function SettingsPage({user,settings,subjects,records,table,syncStatus,onSettings,onBackup,onRestore,onImportAttendance,onClear,onLogout}:{user:AuthUser,settings:Settings,subjects:Subject[],records:Attendance[],table:TimetableEntry[],syncStatus:SyncStatus,onSettings:(s:Settings)=>void,onBackup:()=>void,onRestore:()=>void,onImportAttendance:()=>void,onClear:()=>void,onLogout:()=>void}){
+export function SettingsPage({
+  user,
+  settings,
+  subjects,
+  records,
+  table,
+  syncStatus,
+  storageMode,
+  onSwitchToCloud,
+  onSwitchToLocal,
+  onSettings,
+  onBackup,
+  onRestore,
+  onImportAttendance,
+  onClear,
+  onLogout
+}:{
+  user: AuthUser;
+  settings: Settings;
+  subjects: Subject[];
+  records: Attendance[];
+  table: TimetableEntry[];
+  syncStatus: SyncStatus;
+  storageMode?: StorageMode | null;
+  onSwitchToCloud?: () => void;
+  onSwitchToLocal?: () => void;
+  onSettings: (s: Settings) => void;
+  onBackup: () => void;
+  onRestore: () => void;
+  onImportAttendance: () => void;
+  onClear: () => void;
+  onLogout: () => void;
+}){
   const [targetDraft, setTargetDraft] = useState(() => String(settings.defaultTarget));
   const [geminiKeyDraft, setGeminiKeyDraft] = useState(() => getGeminiApiKey());
 
@@ -759,10 +936,38 @@ export function SettingsPage({user,settings,subjects,records,table,syncStatus,on
   };
 
   return <div className="settings">
-    <section className="card account">
-      {user.photoURL ? <img src={user.photoURL} alt={user.displayName || 'Profile'}/> : null}
-      <div><h2>{user.displayName}</h2><p>{user.email}</p><SyncBadge status={syncStatus}/></div>
-      <button onClick={onLogout}><LogOut/> Logout</button>
+    {storageMode === 'cloud' && (
+      <section className="card account">
+        {user.photoURL ? <img src={user.photoURL} alt={user.displayName || 'Profile'}/> : null}
+        <div><h2>{user.displayName}</h2><p>{user.email}</p><SyncBadge status={syncStatus} mode="cloud"/></div>
+        <button onClick={onLogout}><LogOut/> Logout</button>
+      </section>
+    )}
+    <section className="card">
+      <h2>Data & sync</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <b style={{ fontSize: 15 }}>Storage Mode: {storageMode === 'local' ? 'Local only' : 'Google Cloud Sync'}</b>
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+            {storageMode === 'local'
+              ? 'Data lives solely on this device. No account connected.'
+              : `Connected as ${user.email || user.displayName || 'Google Account'}`}
+          </p>
+        </div>
+        <SyncBadge status={syncStatus} mode={storageMode} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
+        {storageMode === 'local' ? (
+          <button className="primary" onClick={onSwitchToCloud} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Cloud size={16} /> Turn on Cloud Sync
+          </button>
+        ) : (
+          <button onClick={onSwitchToLocal} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <HardDrive size={16} /> Switch to Local Mode
+          </button>
+        )}
+      </div>
     </section>
     <section className="card">
       <h2>Attendance</h2>

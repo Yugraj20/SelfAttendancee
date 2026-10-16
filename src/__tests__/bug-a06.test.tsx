@@ -39,6 +39,7 @@ vi.mock('../sync', async (importOriginal) => {
 
 describe('BUG-A06: Auth callback race on quick sign-in then sign-out', () => {
   beforeEach(async () => {
+    localStorage.setItem('selfattendance_storage_mode', 'cloud');
     capturedAuthCb = null;
     await resetTestDb();
     Object.defineProperty(window, 'matchMedia', {
