@@ -3,6 +3,7 @@ import { Check, Clock3, Calendar, X } from 'lucide-react';
 import type { Attendance, AttendanceStatus, Subject, TimetableEntry } from '../types';
 import { DAYS } from '../types';
 import { dateISO } from '../math';
+import { useToday } from '../hooks/useToday';
 import { Modal } from '../App';
 
 interface QuickMarkModalProps {
@@ -22,17 +23,12 @@ export function QuickMarkModal({
   onNavigateHome,
   onClose
 }: QuickMarkModalProps) {
-  const todayDate = dateISO();
-  const dayName = DAYS[(new Date().getDay() + 6) % 7];
+  const { todayISO, todayDay, formattedDate } = useToday();
+  const todayDate = todayISO;
+  const dayName = todayDay;
   const todayEntries = table
     .filter(t => t.day === dayName)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
-
-  const formattedDate = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric'
-  });
 
   return (
     <Modal onClose={onClose}>
@@ -77,7 +73,7 @@ export function QuickMarkModal({
                     <div className="quick-card-actions">
                       <button
                         className={`qm-btn present ${status === 'present' ? 'active' : ''}`}
-                        onClick={() => onMark(e.subjectId, 'present', todayDate, e.id)}
+                        onClick={() => onMark(e.subjectId, 'present', dateISO(), e.id)}
                         aria-label={`Mark ${displayName} present`}
                       >
                         <Check size={16} />
@@ -85,7 +81,7 @@ export function QuickMarkModal({
                       </button>
                       <button
                         className={`qm-btn absent ${status === 'absent' ? 'active' : ''}`}
-                        onClick={() => onMark(e.subjectId, 'absent', todayDate, e.id)}
+                        onClick={() => onMark(e.subjectId, 'absent', dateISO(), e.id)}
                         aria-label={`Mark ${displayName} absent`}
                       >
                         <span>−</span>
@@ -93,7 +89,7 @@ export function QuickMarkModal({
                       </button>
                       <button
                         className={`qm-btn cancelled ${status === 'cancelled' ? 'active' : ''}`}
-                        onClick={() => onMark(e.subjectId, 'cancelled', todayDate, e.id)}
+                        onClick={() => onMark(e.subjectId, 'cancelled', dateISO(), e.id)}
                         aria-label={`Mark ${displayName} cancelled`}
                       >
                         <span>Off</span>
@@ -101,7 +97,7 @@ export function QuickMarkModal({
                       {status && status !== 'unmarked' && (
                         <button
                           className="qm-btn clear"
-                          onClick={() => onMark(e.subjectId, 'unmarked', todayDate, e.id)}
+                          onClick={() => onMark(e.subjectId, 'unmarked', dateISO(), e.id)}
                           aria-label="Clear mark"
                         >
                           <X size={14} />
@@ -127,7 +123,7 @@ export function QuickMarkModal({
             {subjects
               .filter(s => !todayEntries.some(e => e.subjectId === s.id))
               .map(s => {
-                const record = records.find(r => r.subjectId === s.id && r.date === todayDate);
+                const record = records.find(r => r.subjectId === s.id && r.date === dateISO());
                 const status = record?.status;
 
                 return (
@@ -148,7 +144,7 @@ export function QuickMarkModal({
                     <div className="quick-card-actions">
                       <button
                         className={`qm-btn present ${status === 'present' ? 'active' : ''}`}
-                        onClick={() => onMark(s.id, 'present', todayDate, 'manual')}
+                        onClick={() => onMark(s.id, 'present', dateISO(), 'manual')}
                         aria-label={`Mark ${s.name} present`}
                       >
                         <Check size={16} />
@@ -156,7 +152,7 @@ export function QuickMarkModal({
                       </button>
                       <button
                         className={`qm-btn absent ${status === 'absent' ? 'active' : ''}`}
-                        onClick={() => onMark(s.id, 'absent', todayDate, 'manual')}
+                        onClick={() => onMark(s.id, 'absent', dateISO(), 'manual')}
                         aria-label={`Mark ${s.name} absent`}
                       >
                         <span>−</span>
@@ -165,7 +161,7 @@ export function QuickMarkModal({
                       {status && status !== 'unmarked' && (
                         <button
                           className="qm-btn clear"
-                          onClick={() => onMark(s.id, 'unmarked', todayDate, 'manual')}
+                          onClick={() => onMark(s.id, 'unmarked', dateISO(), 'manual')}
                           aria-label="Clear mark"
                         >
                           <X size={14} />

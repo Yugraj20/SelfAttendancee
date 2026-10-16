@@ -17,6 +17,7 @@ import { MonthlyAttendance } from './components/MonthlyAttendance';
 import { ExcelExportModal } from './components/ExcelExportModal';
 import { QuickMarkModal } from './components/QuickMarkModal';
 import { SubjectsPage } from './components/SubjectsPage';
+import { useToday } from './hooks/useToday';
 
 type Page='home'|'subjects'|'calendar'|'timetable'|'statistics'|'settings';
 const colors=['#6d5dfc','#20c997','#ff8d5c','#e95d9a','#3989ff','#e0a526'];
@@ -490,7 +491,8 @@ function Login(){
 }
 export function Profile({user}:{user:AuthUser}){return <div className="profile">{user.photoURL?<img src={user.photoURL} alt={user.displayName||'Profile'}/>:null}<div><b>{user.displayName}</b><small>{user.email}</small></div></div>}
 function Dashboard({subjects,records,table,stats,restoring,onMark,onAdd,onEdit,onNav}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];stats:ReturnType<typeof overall>;restoring:boolean;onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onAdd:()=>void;onEdit:(s:Subject)=>void;onNav:(p:Page)=>void}) {
-  const time=new Date().toTimeString().slice(0,5), today=table.filter(t=>t.day===todayDay()).sort((a,b)=>a.startTime.localeCompare(b.startTime));
+  const { todayDay: currentTodayDay, nowTime } = useToday();
+  const time=nowTime, today=table.filter(t=>t.day===currentTodayDay).sort((a,b)=>a.startTime.localeCompare(b.startTime));
   const currentClass=today.find(t=>t.startTime<=time&&t.endTime>time), next=today.find(t=>t.startTime>time);
   const [flashed,fireFlash]=useMarkFlash();
   return <>
@@ -509,7 +511,8 @@ function Dashboard({subjects,records,table,stats,restoring,onMark,onAdd,onEdit,o
 // full list alike. That keeps the FAB's scroll target present at all times and means the id can
 // never appear twice, which it would if the skeleton carried its own copy of it.
 function TodaysClasses({entries,subjects,records,currentId,nextId,restoring,onMark,onSetup}:{entries:TimetableEntry[];subjects:Subject[];records:Attendance[];currentId?:string;nextId?:string;restoring:boolean;onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onSetup:()=>void}){
-  const date=dateISO();
+  const { todayISO } = useToday();
+  const date=todayISO;
   const [flashed,fireFlash]=useMarkFlash();
   const hit=(e:TimetableEntry,s:AttendanceStatus)=>{fireFlash(e.id);onMark(e.subjectId,s,date,e.id)};
   return <section id="todays-classes" className="todays-classes">
@@ -609,7 +612,8 @@ function DayAttendance({subjects,records,table,day,onMark}:{subjects:Subject[];r
 }
 
 function CalendarPage({subjects,records,table,onMark,onImport,onOpenMonthly}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onImport?:()=>void;onOpenMonthly?:()=>void}){
-  const [cursor,setCursor]=useState(()=>new Date()),[selected,setSelected]=useState(dateISO());
+  const { todayISO } = useToday();
+  const [cursor,setCursor]=useState(()=>new Date()),[selected,setSelected]=useState(todayISO);
   const y=cursor.getFullYear(),m=cursor.getMonth(),first=new Date(y,m,1),count=new Date(y,m+1,0).getDate(),offset=(first.getDay()+6)%7;
   const dates=Array.from({length:offset+count},(_,i)=>i<offset?'':`${y}-${String(m+1).padStart(2,'0')}-${String(i-offset+1).padStart(2,'0')}`);
   const validSubIds=new Set(subjects.map(s=>s.id));
@@ -639,7 +643,7 @@ function CalendarPage({subjects,records,table,onMark,onImport,onOpenMonthly}:{su
   </>;
 }
 const blankEntry=(uid:string):TimetableEntry=>({id:id(),uid,day:'Monday',subjectId:'',subject:'',startTime:'09:00',endTime:'10:00',room:'',teacher:'',type:'Lecture',notes:'',order:0});
-export function TimetablePage({subjects,table,onEdit,onDelete,onImport}:{subjects:Subject[],table:TimetableEntry[],onEdit:(e:TimetableEntry)=>void,onDelete:(e:TimetableEntry)=>void,onImport:()=>void}){const [day,setDay]=useState(todayDay());const entries=table.filter(t=>t.day===day).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <><div className="toolbar"><div className="view-segmented-control" role="tablist">{DAYS.map(d=><button type="button" role="tab" key={d} className={`view-tab-btn ${d===day?'active':''}`} onClick={()=>setDay(d)}><span>{d.slice(0,3)}</span></button>)}</div></div><div className="import-banner"><Sparkles/><div><b>Update Timetable with AI</b><span>Upload a PDF or image to replace your recurring timetable.</span></div><button onClick={onImport}>Update Timetable</button></div>{!entries.length?<Empty title={`No classes on ${day}`} text="Update your timetable to see scheduled classes." action="Update Timetable" onAction={onImport}/>:<div className="timeline">{entries.map(e=><article className="card entry" key={e.id}><time>{e.startTime}<small>{e.endTime}</small></time>{(()=>{const sub=subjects.find(s=>s.id===e.subjectId);const displayName=sub?.name||e.subject;return <div><h3>{displayName}</h3><p><span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'} {e.teacher&&`· ${e.teacher}`}</p><small>{e.notes}</small></div>})()}<button className="icon" onClick={()=>onEdit(e)} aria-label="Edit class">•••</button><button className="icon danger-text" onClick={()=>onDelete(e)} aria-label="Delete class"><Trash2/></button></article>)}</div>}</>}
+export function TimetablePage({subjects,table,onEdit,onDelete,onImport}:{subjects:Subject[],table:TimetableEntry[],onEdit:(e:TimetableEntry)=>void,onDelete:(e:TimetableEntry)=>void,onImport:()=>void}){const { todayDay: currentTodayDay } = useToday();const [day,setDay]=useState(currentTodayDay);const entries=table.filter(t=>t.day===day).sort((a,b)=>a.startTime.localeCompare(b.startTime));return <><div className="toolbar"><div className="view-segmented-control" role="tablist">{DAYS.map(d=><button type="button" role="tab" key={d} className={`view-tab-btn ${d===day?'active':''}`} onClick={()=>setDay(d)}><span>{d.slice(0,3)}</span></button>)}</div></div><div className="import-banner"><Sparkles/><div><b>Update Timetable with AI</b><span>Upload a PDF or image to replace your recurring timetable.</span></div><button onClick={onImport}>Update Timetable</button></div>{!entries.length?<Empty title={`No classes on ${day}`} text="Update your timetable to see scheduled classes." action="Update Timetable" onAction={onImport}/>:<div className="timeline">{entries.map(e=><article className="card entry" key={e.id}><time>{e.startTime}<small>{e.endTime}</small></time>{(()=>{const sub=subjects.find(s=>s.id===e.subjectId);const displayName=sub?.name||e.subject;return <div><h3>{displayName}</h3><p><span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'} {e.teacher&&`· ${e.teacher}`}</p><small>{e.notes}</small></div>})()}<button className="icon" onClick={()=>onEdit(e)} aria-label="Edit class">•••</button><button className="icon danger-text" onClick={()=>onDelete(e)} aria-label="Delete class"><Trash2/></button></article>)}</div>}</>}
 function Statistics({subjects,records,table,stats,restoring,onExportExcel}:{subjects:Subject[],records:Attendance[],table:TimetableEntry[],stats:ReturnType<typeof overall>,restoring:boolean,onExportExcel:()=>void}){
   const [tab, setTab] = useState<'overview' | 'monthly'>('overview');
   const chart=subjects.map(s=>({id:s.id,name:s.code||s.name.slice(0,8),value:+subjectStats(s,records).pct.toFixed(0),fill:s.color}));
