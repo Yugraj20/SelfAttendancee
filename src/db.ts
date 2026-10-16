@@ -100,17 +100,171 @@ export function validateRestoreData(data: unknown): { subjects: Subject[]; atten
   return d as { subjects: Subject[]; attendance: Attendance[]; timetable: TimetableEntry[]; settings: Settings };
 }
 
+export interface QuarantineReport {
+  quarantined: {
+    subjects: unknown[];
+    attendance: unknown[];
+    timetable: unknown[];
+  };
+  totalQuarantined: number;
+}
+
+let lastQuarantineReport: QuarantineReport | null = null;
+export function getLastQuarantineReport(): QuarantineReport | null {
+  return lastQuarantineReport;
+}
+export function clearLastQuarantineReport(): void {
+  lastQuarantineReport = null;
+}
+
+export function sanitizeAndQuarantineData(data: unknown): {
+  valid: { subjects: Subject[]; attendance: Attendance[]; timetable: TimetableEntry[]; settings: Settings };
+  quarantineReport: QuarantineReport;
+} {
+  const quarantined: QuarantineReport['quarantined'] = { subjects: [], attendance: [], timetable: [] };
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid data: payload must be an object');
+  }
+  const d = data as any;
+  const rawSubjects = Array.isArray(d.subjects) ? d.subjects : [];
+  const rawAttendance = Array.isArray(d.attendance) ? d.attendance : [];
+  const rawTimetable = Array.isArray(d.timetable) ? d.timetable : [];
+
+  const validSubjects: Subject[] = [];
+  for (let i = 0; i < rawSubjects.length; i++) {
+    const s = rawSubjects[i];
+    if (
+      s &&
+      typeof s === 'object' &&
+      typeof s.id === 'string' &&
+      s.id.trim() &&
+      typeof s.name === 'string' &&
+      s.name.trim()
+    ) {
+      const target = typeof s.target === 'number' && Number.isFinite(s.target)
+        ? Math.max(1, Math.min(100, Math.round(s.target)))
+        : 75;
+      validSubjects.push({
+        id: s.id.trim(),
+        uid: typeof s.uid === 'string' ? s.uid : '',
+        name: s.name.trim(),
+        code: typeof s.code === 'string' ? s.code.trim() : '',
+        teacher: typeof s.teacher === 'string' ? s.teacher.trim() : '',
+        room: typeof s.room === 'string' ? s.room.trim() : '',
+        color: typeof s.color === 'string' ? s.color : '#6d5dfc',
+        target,
+        createdAt: typeof s.createdAt === 'string' ? s.createdAt : new Date().toISOString(),
+      });
+    } else {
+      quarantined.subjects.push(s);
+    }
+  }
+
+  const validAttendance: Attendance[] = [];
+  for (let i = 0; i < rawAttendance.length; i++) {
+    const a = rawAttendance[i];
+    if (
+      a &&
+      typeof a === 'object' &&
+      typeof a.id === 'string' &&
+      a.id.trim() &&
+      typeof a.subjectId === 'string' &&
+      a.subjectId.trim() &&
+      typeof a.date === 'string' &&
+      ISO_DATE_REGEX.test(a.date) &&
+      !isNaN(Date.parse(a.date)) &&
+      (a.status === 'present' || a.status === 'absent' || a.status === 'unmarked' || a.status === 'cancelled')
+    ) {
+      validAttendance.push({
+        id: a.id.trim(),
+        uid: typeof a.uid === 'string' ? a.uid : '',
+        subjectId: a.subjectId.trim(),
+        date: a.date,
+        sessionId: typeof a.sessionId === 'string' ? a.sessionId : 'manual',
+        status: a.status,
+        updatedAt: typeof a.updatedAt === 'string' ? a.updatedAt : new Date().toISOString(),
+        ...(typeof a.startTime === 'string' ? { startTime: a.startTime } : {}),
+        ...(typeof a.endTime === 'string' ? { endTime: a.endTime } : {}),
+        ...(typeof a.room === 'string' ? { room: a.room } : {}),
+        ...(typeof a.isExtra === 'boolean' ? { isExtra: a.isExtra } : {}),
+      });
+    } else {
+      quarantined.attendance.push(a);
+    }
+  }
+
+  const validTimetable: TimetableEntry[] = [];
+  for (let i = 0; i < rawTimetable.length; i++) {
+    const t = rawTimetable[i];
+    if (
+      t &&
+      typeof t === 'object' &&
+      typeof t.id === 'string' &&
+      t.id.trim() &&
+      VALID_DAYS.includes(t.day) &&
+      typeof t.startTime === 'string' &&
+      HH_MM_REGEX.test(t.startTime) &&
+      typeof t.endTime === 'string' &&
+      HH_MM_REGEX.test(t.endTime)
+    ) {
+      validTimetable.push({
+        id: t.id.trim(),
+        uid: typeof t.uid === 'string' ? t.uid : '',
+        day: t.day,
+        subjectId: typeof t.subjectId === 'string' ? t.subjectId : '',
+        subject: typeof t.subject === 'string' ? t.subject.trim() : '',
+        startTime: t.startTime,
+        endTime: t.endTime,
+        room: typeof t.room === 'string' ? t.room.trim() : '',
+        teacher: typeof t.teacher === 'string' ? t.teacher.trim() : '',
+        type: typeof t.type === 'string' ? t.type.trim() : 'Lecture',
+        notes: typeof t.notes === 'string' ? t.notes.trim() : '',
+        order: typeof t.order === 'number' ? t.order : 0,
+      });
+    } else {
+      quarantined.timetable.push(t);
+    }
+  }
+
+  const rawSettings = d.settings;
+  const sanitizedSettings: Settings = {
+    uid: typeof rawSettings?.uid === 'string' ? rawSettings.uid : '',
+    defaultTarget: typeof rawSettings?.defaultTarget === 'number' && Number.isFinite(rawSettings.defaultTarget)
+      ? Math.max(1, Math.min(100, Math.round(rawSettings.defaultTarget)))
+      : 75,
+    theme: rawSettings?.theme && ['system', 'light', 'dark', 'amoled'].includes(rawSettings.theme)
+      ? rawSettings.theme
+      : 'system',
+    onboardingComplete: Boolean(rawSettings?.onboardingComplete),
+  };
+
+  const totalQuarantined = quarantined.subjects.length + quarantined.attendance.length + quarantined.timetable.length;
+  return {
+    valid: {
+      subjects: validSubjects,
+      attendance: validAttendance,
+      timetable: validTimetable,
+      settings: sanitizedSettings,
+    },
+    quarantineReport: {
+      quarantined,
+      totalQuarantined,
+    },
+  };
+}
+
 export async function previewRestore(
   uid: string,
   data: { subjects: Subject[]; attendance: Attendance[]; timetable: TimetableEntry[]; settings?: Settings },
   mode: 'merge' | 'replace'
-): Promise<{ added: number; updated: number; skipped: number }> {
-  validateRestoreData(data as any);
+): Promise<{ added: number; updated: number; skipped: number; quarantined?: number }> {
+  const { valid: targetData, quarantineReport } = sanitizeAndQuarantineData(data as any);
   if (mode === 'replace') {
     return {
-      added: data.subjects.length + data.attendance.length + data.timetable.length,
+      added: targetData.subjects.length + targetData.attendance.length + targetData.timetable.length,
       updated: 0,
       skipped: 0,
+      quarantined: quarantineReport.totalQuarantined,
     };
   }
 
@@ -129,7 +283,7 @@ export async function previewRestore(
   let updated = 0;
   let skipped = 0;
 
-  for (const s of data.subjects) {
+  for (const s of targetData.subjects) {
     const local = subMap.get(s.id);
     if (!local) {
       added++;
@@ -144,7 +298,7 @@ export async function previewRestore(
     }
   }
 
-  for (const a of data.attendance) {
+  for (const a of targetData.attendance) {
     const local = attMap.get(a.id);
     if (!local) {
       added++;
@@ -157,7 +311,7 @@ export async function previewRestore(
     }
   }
 
-  for (const t of data.timetable) {
+  for (const t of targetData.timetable) {
     const local = timeMap.get(t.id);
     if (!local) {
       added++;
@@ -166,7 +320,7 @@ export async function previewRestore(
     }
   }
 
-  return { added, updated, skipped };
+  return { added, updated, skipped, quarantined: quarantineReport.totalQuarantined };
 }
 
 // The wipe and the rewrite share one transaction. Clearing in a separate transaction first meant
@@ -176,9 +330,19 @@ export async function restore(
   uid: string,
   data: { subjects: Subject[]; attendance: Attendance[]; timetable: TimetableEntry[]; settings: Settings },
   replace: boolean,
-  restoreSettings: boolean = true
-): Promise<{ added: number; updated: number; skipped: number }> {
-  validateRestoreData(data);
+  restoreSettings: boolean = true,
+  quarantine: boolean = false
+): Promise<{ added: number; updated: number; skipped: number; quarantined?: number }> {
+  let targetData = data;
+  let quarantinedCount = 0;
+  if (quarantine) {
+    const res = sanitizeAndQuarantineData(data);
+    lastQuarantineReport = res.quarantineReport.totalQuarantined > 0 ? res.quarantineReport : null;
+    targetData = res.valid;
+    quarantinedCount = res.quarantineReport.totalQuarantined;
+  } else {
+    validateRestoreData(data);
+  }
   const db = await dbPromise;
   const tx = db.transaction(['subjects', 'attendance', 'timetable', 'settings'], 'readwrite');
   try {
@@ -194,20 +358,20 @@ export async function restore(
       }
       if (restoreSettings) await tx.objectStore('settings').delete(uid);
 
-      for (const s of data.subjects) {
+      for (const s of targetData.subjects) {
         await tx.objectStore('subjects').put({ ...s, uid });
         added++;
       }
-      for (const a of data.attendance) {
+      for (const a of targetData.attendance) {
         await tx.objectStore('attendance').put({ ...a, uid });
         added++;
       }
-      for (const t of data.timetable) {
+      for (const t of targetData.timetable) {
         await tx.objectStore('timetable').put({ ...t, uid });
         added++;
       }
-      if (data.settings && restoreSettings) {
-        await tx.objectStore('settings').put({ ...data.settings, uid });
+      if (targetData.settings && restoreSettings) {
+        await tx.objectStore('settings').put({ ...targetData.settings, uid });
       }
     } else {
       const [localSubjects, localAttendance, localTimetable] = await Promise.all([
@@ -220,7 +384,7 @@ export async function restore(
       const attMap = new Map(localAttendance.map(a => [a.id, a]));
       const timeMap = new Map(localTimetable.map(t => [t.id, t]));
 
-      for (const s of data.subjects) {
+      for (const s of targetData.subjects) {
         const local = subMap.get(s.id);
         if (!local) {
           await tx.objectStore('subjects').put({ ...s, uid });
@@ -237,7 +401,7 @@ export async function restore(
         }
       }
 
-      for (const a of data.attendance) {
+      for (const a of targetData.attendance) {
         const local = attMap.get(a.id);
         if (!local) {
           await tx.objectStore('attendance').put({ ...a, uid });
@@ -252,7 +416,7 @@ export async function restore(
         }
       }
 
-      for (const t of data.timetable) {
+      for (const t of targetData.timetable) {
         const local = timeMap.get(t.id);
         if (!local) {
           await tx.objectStore('timetable').put({ ...t, uid });
@@ -263,13 +427,13 @@ export async function restore(
         }
       }
 
-      if (data.settings && restoreSettings) {
-        await tx.objectStore('settings').put({ ...data.settings, uid });
+      if (targetData.settings && restoreSettings) {
+        await tx.objectStore('settings').put({ ...targetData.settings, uid });
       }
     }
 
     await tx.done;
-    return { added, updated, skipped };
+    return { added, updated, skipped, quarantined: quarantinedCount };
   } catch (err) {
     try { tx.abort(); } catch { }
     throw err;

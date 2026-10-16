@@ -112,10 +112,17 @@ export function syncOnLogin(uid: string, onStatus?: (s: SyncStatus) => void): Pr
   return started;
 }
 
+export type SyncErrorReason = 'network' | 'invalid_data' | null;
+let lastSyncErrorReason: SyncErrorReason = null;
+export function getLastSyncErrorReason(): SyncErrorReason {
+  return lastSyncErrorReason;
+}
+
 async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promise<SyncResult> {
   const fs = getFirestoreInstance();
   if (!fs) return 'skipped';
   try {
+    lastSyncErrorReason = null;
     onStatus?.('syncing');
     const reconciled = await isReconciled(uid);
     const dirty = await isDirty(uid);
@@ -159,7 +166,7 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
         attendance: cloud.attendance ?? [],
         timetable: cloud.timetable ?? [],
         settings: sanitizedSettings,
-      }, true);
+      }, true, true, true);
       await setReconciled(uid, true);
       onStatus?.('synced');
       return 'pulled';
@@ -172,6 +179,8 @@ async function reconcile(uid: string, onStatus?: (s: SyncStatus) => void): Promi
     return 'seeded';
   } catch (e) {
     console.error('Cloud sync (login) failed:', e);
+    const msg = e instanceof Error ? e.message : String(e);
+    lastSyncErrorReason = msg.includes('Invalid data') || msg.includes('not an object') ? 'invalid_data' : 'network';
     onStatus?.(navigator.onLine ? 'error' : 'offline');
     return 'failed';
   }

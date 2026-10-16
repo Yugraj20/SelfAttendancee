@@ -60,11 +60,14 @@ export function validateTimetableResponse(raw: unknown): { entries: DetectedEntr
 
     const startTime = normalizeTime(it.startTime);
     const endTime = normalizeTime(it.endTime);
+    if (!startTime || !endTime) {
+      warnings.push(`Entry at index ${i} has missing or incomplete class times.`);
+    }
 
     entries.push({
       day: (validDays.includes(day) ? day : rawDay) as any,
-      startTime: startTime || '09:00',
-      endTime: endTime || '10:00',
+      startTime: startTime || '',
+      endTime: endTime || '',
       subject: typeof it.subject === 'string' ? it.subject.trim() : '',
       subjectCode: typeof it.subjectCode === 'string' ? it.subjectCode.trim() : '',
       teacher: typeof it.teacher === 'string' ? it.teacher.trim() : '',

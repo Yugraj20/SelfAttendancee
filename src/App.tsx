@@ -4,8 +4,8 @@ import { BarChart3, BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Cl
 import { Area, AreaChart, CartesianGrid, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { ThinkingOrb } from 'thinking-orbs';
 import { auth, firebaseConfigured, logout, signIn, type AuthUser } from './firebase';
-import { cancelPendingPush, flushPendingPush, pushToCloud, syncOnLogin, type SyncStatus } from './sync';
-import { clearUser, id, importAttendanceData, importTimetableData, put, remove, restore, userData } from './db';
+import { cancelPendingPush, flushPendingPush, getLastSyncErrorReason, pushToCloud, syncOnLogin, type SyncStatus } from './sync';
+import { clearUser, getLastQuarantineReport, id, importAttendanceData, importTimetableData, put, remove, restore, userData, type QuarantineReport } from './db';
 import { dateISO, overall, subjectStats, trend } from './math';
 import { extractAttendance, extractTimetable } from './gemini';
 import { analyse, annotate, buildWrites, summarise, validISO, willImport } from './attendance-import';
@@ -170,7 +170,7 @@ function AppContent() {
  const [user,setUser]=useState<AuthUser|null>(null),[loading,setLoading]=useState(true),[page,setPage]=useState<Page>('home');
  const [subjects,setSubjects]=useState<Subject[]>([]),[records,setRecords]=useState<Attendance[]>([]),[table,setTable]=useState<TimetableEntry[]>([]),[settings,setSettings]=useState<Settings|null>(null);
  const [modal,setModal]=useState<'subject'|'entry'|'import'|'attendance-import'|'backup'|'restore'|'clear'|'excel-export'|'quick-mark'|null>(null),[editSubject,setEditSubject]=useState<Subject|null>(null),[editEntry,setEditEntry]=useState<TimetableEntry|null>(null),[toast,setToast]=useState('');
- const [syncStatus,setSyncStatus]=useState<SyncStatus>('idle'),[restoring,setRestoring]=useState(false),[jumpToday,setJumpToday]=useState(false),[syncFailed,setSyncFailed]=useState(false);
+ const [syncStatus,setSyncStatus]=useState<SyncStatus>('idle'),[restoring,setRestoring]=useState(false),[jumpToday,setJumpToday]=useState(false),[syncFailed,setSyncFailed]=useState(false),[quarantineNotice,setQuarantineNotice]=useState<QuarantineReport|null>(null);
  const uid=user?.uid ?? '';
  // The toast stays mounted so it can animate out (transitions.dev 22-toast); the ref holds the
  // last message so the box is not empty while it leaves.
@@ -194,7 +194,7 @@ function AppContent() {
    // flight at once. Only the newest one is allowed to write state; an older one finishing late
    // used to overwrite fresh data with the snapshot it read before the cloud pull landed.
    const mine=++run;
-   if(!u){setUser(null);setLoading(false);setSyncStatus('idle');setRestoring(false);setSyncFailed(false);setPage('home');setSubjects([]);setRecords([]);setTable([]);setSettings(null);return}
+   if(!u){setUser(null);setLoading(false);setSyncStatus('idle');setRestoring(false);setSyncFailed(false);setQuarantineNotice(null);setPage('home');setSubjects([]);setRecords([]);setTable([]);setSettings(null);return}
     setLoading(true);
    const show=async()=>{const d=await userData(u.uid);if(run!==mine)return;setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings)};
    await put('users',{uid:u.uid,email:u.email??'',name:u.displayName??'',photoURL:u.photoURL??'',updatedAt:new Date().toISOString()});
@@ -208,7 +208,12 @@ function AppContent() {
    // keying the re-read off a success flag left the pulled data on disk but not on screen until
    // the user refreshed the page by hand.
    await show();
-   if(run===mine){setRestoring(false);setSyncFailed(syncRes==='failed');}
+   if(run===mine){
+     setRestoring(false);
+     setSyncFailed(syncRes==='failed');
+     const qr = getLastQuarantineReport();
+     if(qr && qr.totalQuarantined > 0) setQuarantineNotice(qr);
+   }
  })},[]);
  // `system` was written straight to data-theme, where it matched no CSS rule — so the default
  // setting never went dark whatever the OS said. Resolve it here instead, and follow the OS live.
@@ -329,10 +334,14 @@ function AppContent() {
  if(loading)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your attendance…</div>;
  if(!user)return <Login />;
   if(!settings)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your settings…</div>;
- if(syncFailed&&!subjects.length&&!records.length)return <div className="center"><p style={{marginBottom:16}}>Couldn't reach your cloud copy, retry</p><button className="primary" onClick={retryLoginSync}>Retry</button></div>;
+  if(syncFailed&&!subjects.length&&!records.length){
+    const r=getLastSyncErrorReason();
+    return <div className="center"><p style={{marginBottom:16}}>{r==='invalid_data'?'Your cloud copy contains invalid data and could not be restored.':"Couldn't reach your cloud copy. Check your internet connection and retry."}</p><button className="primary" onClick={retryLoginSync}>Retry</button></div>;
+  }
  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
+ {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
  {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{await flushPendingPush(uid);await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
@@ -938,14 +947,17 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
         {items.length>0&&<>
           <div className="success"><Check/> AI detected {items.length} timetable entries. Edit anything uncertain.</div>
           <div className="review">
-            {items.map((x,i)=><div key={i} className="review-row">
-              <select value={x.day||'Monday'} onChange={e=>edit(i,'day',e.target.value)}>{DAYS.map(d=><option key={d}>{d}</option>)}</select>
-              <input value={x.subject||''} onChange={e=>edit(i,'subject',e.target.value)} placeholder="Subject"/>
-              <input type="time" value={x.startTime||''} onChange={e=>edit(i,'startTime',e.target.value)}/>
-              <input type="time" value={x.endTime||''} onChange={e=>edit(i,'endTime',e.target.value)}/>
-              <input value={x.room||''} onChange={e=>edit(i,'room',e.target.value)} placeholder="Room"/>
-              <button className="icon danger-text" onClick={()=>setItems(items.filter((_,n)=>n!==i))} aria-label="Delete class"><Trash2/></button>
-            </div>)}
+            {items.map((x,i)=>{
+              const invalid=!x.day||!DAYS.includes(x.day)||!x.startTime||!x.endTime||x.startTime>=x.endTime;
+              return <div key={i} className={`review-row${invalid?' has-warning':''}`} style={invalid?{border:'1px solid var(--absent,#ff5c5c)',borderRadius:8,padding:4}:undefined}>
+                <select value={x.day||'Monday'} onChange={e=>edit(i,'day',e.target.value)}>{DAYS.map(d=><option key={d}>{d}</option>)}</select>
+                <input value={x.subject||''} onChange={e=>edit(i,'subject',e.target.value)} placeholder="Subject"/>
+                <input type="time" value={x.startTime||''} onChange={e=>edit(i,'startTime',e.target.value)}/>
+                <input type="time" value={x.endTime||''} onChange={e=>edit(i,'endTime',e.target.value)}/>
+                <input value={x.room||''} onChange={e=>edit(i,'room',e.target.value)} placeholder="Room"/>
+                <button className="icon danger-text" onClick={()=>setItems(items.filter((_,n)=>n!==i))} aria-label="Delete class"><Trash2/></button>
+              </div>;
+            })}
           </div>
           <button className="primary full" disabled={busyCommit} onClick={commit}>
             {busyCommit ? 'Importing…' : `Import ${items.length} timetable entries`}
