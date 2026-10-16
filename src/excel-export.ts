@@ -1,4 +1,6 @@
 import * as XLSX from 'xlsx';
+import { Capacitor } from '@capacitor/core';
+import { exportOrShareFile } from './native-file';
 import type { Attendance, Subject, TimetableEntry } from './types';
 import { DAYS } from './types';
 const localISO=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -308,7 +310,16 @@ export function exportAttendanceToExcel({
     }
 
     // Write file client-side
-    XLSX.writeFile(wb, filename);
+    if (Capacitor.isNativePlatform()) {
+      const base64Data = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+      void exportOrShareFile({
+        filename,
+        base64Data,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+    } else {
+      XLSX.writeFile(wb, filename);
+    }
 
     return {
       success: true,

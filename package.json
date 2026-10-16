@@ -7,10 +7,19 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:android": "tsc --noEmit && vite build && npx cap sync android",
+    "android:open": "npx cap open android",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/status-bar": "^8.0.4",
     "@google/generative-ai": "^0.24.1",
     "firebase": "^11.0.2",
     "idb": "^8.0.0",
@@ -22,6 +31,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.6.9",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

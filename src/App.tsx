@@ -25,6 +25,10 @@ import { createPreSyncSnapshot, executeConflictResolution, mergeUserData, type C
 import { doc, getDocFromServer } from 'firebase/firestore';
 import { firestore } from './firebase';
 import { HardDrive, Cloud } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { exportOrShareFile } from './native-file';
 
 type Page='home'|'subjects'|'calendar'|'timetable'|'statistics'|'settings';
 const colors=['#6d5dfc','#20c997','#ff8d5c','#e95d9a','#3989ff','#e0a526'];
@@ -344,6 +348,32 @@ function AppContent() {
      document.removeEventListener('visibilitychange',handleVis);
    };
  },[uid]);
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+      StatusBar.setBackgroundColor({ color: '#0f172a' }).catch(() => {});
+    }
+  }, []);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let removeListener: (() => void) | undefined;
+    CapApp.addListener('backButton', () => {
+      if (modal) {
+        setModal(null);
+      } else if (conflictState) {
+        setConflictState(null);
+      } else if (page !== 'home') {
+        setPage('home');
+      } else {
+        void CapApp.exitApp();
+      }
+    }).then(handle => {
+      removeListener = () => { void handle.remove(); };
+    });
+    return () => {
+      removeListener?.();
+    };
+  }, [modal, conflictState, page]);
  const reload=async(push=true)=>{if(!uid)return;const d=await userData(uid);setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings);if(push)pushToCloud(uid,setSyncStatus)};
  const saveSubject=async(s:Subject)=>{await put('subjects',s);await reload();setModal(null);flash('Subject saved')};
  const deleteSubject=async(s:Subject, history:boolean)=>{
@@ -1349,14 +1379,14 @@ function AttendanceImportModal({uid,subjects,records,defaultTarget,onCommitted,o
   </Modal>;
 }
 export function BackupModal({data,onClose}:{data:BackupPayload,onClose:()=>void}){
-  const download=()=>{
-    const blob=new Blob([makeBackup(data)],{type:'text/plain'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=`self-attendance-backup-${dateISO()}.txt`;
-    a.click();
-    window.setTimeout(()=>URL.revokeObjectURL(url),10000);
+  const download=async()=>{
+    const content=makeBackup(data);
+    const filename=`self-attendance-backup-${dateISO()}.txt`;
+    await exportOrShareFile({
+      filename,
+      content,
+      mimeType: 'text/plain',
+    });
   };
   return <Modal onClose={onClose}>
     <h2>Backup your data</h2>

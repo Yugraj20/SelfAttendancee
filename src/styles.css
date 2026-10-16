@@ -1189,7 +1189,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{
   main{
     width:100%;
     margin:0;
-    padding:27px 18px calc(112px + env(safe-area-inset-bottom));
+    padding:calc(27px + env(safe-area-inset-top, 0px)) 18px calc(112px + env(safe-area-inset-bottom));
   }
   .bottom{
     display:none;
