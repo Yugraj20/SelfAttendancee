@@ -42,20 +42,13 @@ Built with a high-end **Neo-Glass & Bento Grid** interface inspired by luxury pr
     <tr>
       <td align="center" width="50%">
         <b>📱 Mobile Dashboard & Today's Rhythm</b><br/><br/>
-        <img src="./docs/screenshots/mobile-dashboard.png" alt="Mobile Dashboard" width="300" style="border-radius: 20px;" /><br/>
+        <img src="./docs/screenshots/mobile-dashboard.png" alt="Mobile Dashboard" width="310" style="border-radius: 20px;" /><br/><br/>
         <em>Overall attendance progress ring, centered quick actions & active class cues</em>
       </td>
       <td align="center" width="50%">
         <b>🔐 Storage Mode Selection</b><br/><br/>
-        <img src="./docs/screenshots/storage-chooser.png" alt="Storage Chooser Screen" width="380" style="border-radius: 20px;" /><br/>
+        <img src="./docs/screenshots/storage-chooser.png" alt="Storage Chooser Screen" width="310" style="border-radius: 20px;" /><br/><br/>
         <em>Choose between 100% offline Local Mode or Google Cloud Sync</em>
-      </td>
-    </tr>
-    <tr>
-      <td align="center" colspan="2">
-        <b>💻 Desktop & Laptop View</b><br/><br/>
-        <img src="./docs/screenshots/desktop-dashboard.png" alt="Desktop Dashboard View" width="700" style="border-radius: 16px;" /><br/>
-        <em>Wide multi-column layout with detailed analytics, monthly calendar, and timetable editor</em>
       </td>
     </tr>
   </table>
