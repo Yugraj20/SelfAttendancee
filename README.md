@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-1.0.1-6366F1.svg?style=flat-square)](https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.1)
 [![Android APK](https://img.shields.io/badge/Android-APK%20Download-10B981.svg?style=flat-square&logo=android&logoColor=white)](https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk)
 [![Live Demo](https://img.shields.io/badge/Web%20App-Live%20Demo-38BDF8.svg?style=flat-square&logo=googlechrome&logoColor=white)](https://yugraj20.github.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg?style=flat-square)](./LICENSE)
 [![React](https://img.shields.io/badge/React-18-blue.svg?style=flat-square&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Capacitor](https://img.shields.io/badge/Capacitor-8-119EFF.svg?style=flat-square&logo=capacitor)](https://capacitorjs.com/)
@@ -195,7 +195,7 @@ You can download the pre-built, ready-to-install Android APK directly from [**Gi
 
 ## 📄 License
 
-This project is open-source and available under the [MIT License](./LICENSE).
+This project is licensed under the [SelfAttendance Proprietary License](./LICENSE). All rights reserved.
 
 ---
 

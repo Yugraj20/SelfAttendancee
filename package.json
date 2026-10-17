@@ -2,7 +2,7 @@
   "name": "self-attendance",
   "version": "1.0.1",
   "description": "Production-ready, local-first attendance tracker with IndexedDB, Firestore sync, and Gemini AI timetable import",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "scripts": {
     "dev": "vite",
