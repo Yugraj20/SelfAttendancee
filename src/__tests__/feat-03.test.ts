@@ -109,4 +109,27 @@ describe('FEAT-03: Mode switching, safety snapshots, and 3-way conflict resoluti
     expect(snapshot).toBeDefined();
     expect((snapshot as any).snapshot.subjects[0].name).toBe('Local Sub');
   });
+
+  it('executeConflictResolution copies localData to cloudUid on keep_device and marks reconciled', async () => {
+    const uid = 'resolve-keep-device-user';
+    const subLocal = sampleSubject({ id: 's-local', uid: 'local', name: 'Device Subject' });
+    const localData: UserDataset = {
+      subjects: [subLocal],
+      attendance: [],
+      timetable: [],
+      settings: sampleSettings({ uid: 'local' }),
+    };
+    const cloudData: UserDataset = {
+      subjects: [sampleSubject({ id: 's-cloud', uid, name: 'Cloud Subject' })],
+      attendance: [],
+      timetable: [],
+      settings: sampleSettings({ uid }),
+    };
+
+    await executeConflictResolution(uid, 'keep_device', localData, cloudData);
+
+    const current = await userData(uid);
+    expect(current.subjects).toHaveLength(1);
+    expect(current.subjects[0].name).toBe('Device Subject');
+  });
 });

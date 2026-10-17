@@ -1,12 +1,15 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { StorageChooser } from '../components/StorageChooser';
 import { SettingsPage } from '../App';
 import { sampleSubject, sampleSettings } from '../test/helpers';
 import { LOCAL_USER } from '../storage-mode';
 
 describe('FEAT-02: First-launch chooser and Settings Data & Sync section', () => {
+  afterEach(() => {
+    cleanup();
+  });
   it('renders StorageChooser with two cards and handles selection', () => {
     const onSelect = vi.fn();
     render(<StorageChooser onSelectMode={onSelect} />);
@@ -26,9 +29,11 @@ describe('FEAT-02: First-launch chooser and Settings Data & Sync section', () =>
     expect(onSelect).toHaveBeenCalledWith('cloud');
   });
 
-  it('renders Data & sync section in SettingsPage for Local mode with switch to cloud action', () => {
+  it('renders Data & sync section in SettingsPage for Local mode with switch to cloud and storage options actions', () => {
     const onSwitchToCloud = vi.fn();
     const onSwitchToLocal = vi.fn();
+    const onOpenSignIn = vi.fn();
+    const onBackToStorageOptions = vi.fn();
 
     render(
       <SettingsPage
@@ -41,6 +46,8 @@ describe('FEAT-02: First-launch chooser and Settings Data & Sync section', () =>
         storageMode="local"
         onSwitchToCloud={onSwitchToCloud}
         onSwitchToLocal={onSwitchToLocal}
+        onOpenSignIn={onOpenSignIn}
+        onBackToStorageOptions={onBackToStorageOptions}
         onSettings={() => {}}
         onBackup={() => {}}
         onRestore={() => {}}
@@ -52,9 +59,18 @@ describe('FEAT-02: First-launch chooser and Settings Data & Sync section', () =>
 
     expect(screen.getByText(/data & sync/i)).toBeDefined();
     expect(screen.getByText(/Storage Mode: Local only/i)).toBeDefined();
+
+    const signInBtn = screen.getByRole('button', { name: /sign in with google/i });
+    fireEvent.click(signInBtn);
+    expect(onOpenSignIn).toHaveBeenCalled();
+
     const turnOnSyncBtn = screen.getByRole('button', { name: /turn on cloud sync/i });
     fireEvent.click(turnOnSyncBtn);
     expect(onSwitchToCloud).toHaveBeenCalled();
+
+    const changeModeBtn = screen.getByRole('button', { name: /change storage mode/i });
+    fireEvent.click(changeModeBtn);
+    expect(onBackToStorageOptions).toHaveBeenCalled();
   });
 
   it('renders Data & sync section in SettingsPage for Cloud mode with switch to local action', () => {

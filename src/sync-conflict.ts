@@ -1,4 +1,4 @@
-import { getDb, put, restore, userData } from './db';
+import { getDb, restore, setReconciled, userData } from './db';
 import type { Attendance, Settings, Subject, TimetableEntry } from './types';
 import { executePush } from './sync';
 
@@ -117,11 +117,15 @@ export async function executeConflictResolution(
   if (choice === 'merge') {
     const merged = mergeUserData(localData, cloudData, uid);
     await restore(uid, merged, true, true, true);
+    await setReconciled(uid, true);
     await executePush(uid);
   } else if (choice === 'keep_cloud') {
     await restore(uid, cloudData, true, true, true);
+    await setReconciled(uid, true);
   } else if (choice === 'keep_device') {
-    // Keep device: push local data to overwrite cloud
+    // Keep device: write localData under target uid, mark reconciled, and push to overwrite cloud
+    await restore(uid, localData, true, true, true);
+    await setReconciled(uid, true);
     await executePush(uid);
   }
 }
