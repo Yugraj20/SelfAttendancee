@@ -569,11 +569,8 @@ function AppContent() {
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={switchToCloud}/></aside><main className={`page-${page}`}>
  {page==='home'&&<div className="dashboard-atmosphere" aria-hidden="true">
-   <div className="atmo-sunset-glow"/>
-   <div className="atmo-sun-orb"/>
-   <div className="atmo-horizon-silhouette"/>
-   <div className="atmo-window-frame"/>
-   <div className="atmo-book-badge"><span>Better</span><span>Students</span><span>Brighter</span><span>Futures</span></div>
+   <img src={`${import.meta.env.BASE_URL}header-sunset.jpg`} alt="" className="atmo-bg-image" />
+   <div className="atmo-overlay" />
  </div>}
  <header className="app-header"><div className="header-welcome"><p className="eyebrow">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1>{page==='home'&&<p className="header-subtitle">Keep showing up <span className="sparkle-icon" aria-hidden="true">✨</span></p>}</div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
  {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
@@ -643,7 +640,7 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
   const ringDashOffset = ringCircumference * (1 - clampedPct / 100);
 
   const deltaVal = stats.total > 0 ? Math.round(stats.pct - defaultTarget) : 0;
-  const deltaBadgeText = stats.total === 0 ? `Target ${defaultTarget}%` : deltaVal >= 0 ? `↗ +${deltaVal}%` : `↗ ${stats.pct.toFixed(0)}%`;
+  const deltaBadgeText = stats.total === 0 ? `Target ${defaultTarget}%` : deltaVal >= 0 ? `↗ +${Math.max(1, deltaVal)}%` : `Target ${defaultTarget}%`;
   const encouragementText = stats.total === 0
     ? 'Add subjects & mark your first class'
     : stats.pct >= 65
@@ -681,10 +678,9 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
             </span>
             <p>Overall attendance</p>
           </div>
-          <button type="button" className="semester-pill" onClick={() => onNav('statistics')}>
+          <span className="semester-pill">
             <span>This Semester</span>
-            <ChevronRight size={13} className="semester-chevron" />
-          </button>
+          </span>
         </div>
 
         <div className="overall-body-row">
@@ -700,7 +696,7 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
             </span>
             <button type="button" className="overall-encouragement-pill" onClick={() => onNav('statistics')}>
               <span className="target-bullseye" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="9" />
                   <circle cx="12" cy="12" r="5" />
                   <circle cx="12" cy="12" r="1.5" fill="currentColor" />
@@ -783,16 +779,8 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
       {/* 3. Today's Rhythm Card */}
       <article className="card today luxury-rhythm">
         <div className="rhythm-classroom-art" aria-hidden="true">
-          <div className="rhythm-sunbeam" />
-          <div className="rhythm-window-panes" />
-          <div className="rhythm-desk-silhouette" />
-          <div className="rhythm-wall-quote">
-            <span>Good</span>
-            <span>Students</span>
-            <span>Build</span>
-            <span>Great</span>
-            <span>Futures</span>
-          </div>
+          <img src={`${import.meta.env.BASE_URL}rhythm-classroom.jpg`} alt="" className="rhythm-bg-image" />
+          <div className="rhythm-bg-fade" />
         </div>
 
         <div className="rhythm-top-row">
