@@ -320,12 +320,12 @@ function AppContent() {
    const choice=settings?.theme??'system';
    const mq=window.matchMedia('(prefers-color-scheme: dark)');
    const apply=()=>{
-     const resolved=choice==='system'?(mq.matches?'dark':'light'):choice;
+     const resolved=choice==='system'?'dark':choice;
      const root=document.documentElement,dark=resolved!=='light';
      root.dataset.theme=resolved;
      root.classList.toggle('dark',dark);
      root.classList.toggle('light',!dark);
-     document.querySelector('meta[name="theme-color"]')?.setAttribute('content',resolved==='amoled'?'#000000':dark?'#171720':'#f6f6fb');
+     document.querySelector('meta[name="theme-color"]')?.setAttribute('content',resolved==='amoled'?'#000000':dark?'#080A12':'#f6f6fb');
    };
    apply();
    mq.addEventListener('change',apply);
@@ -354,7 +354,7 @@ function AppContent() {
     if (Capacitor.isNativePlatform()) {
       StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
-      StatusBar.setBackgroundColor({ color: '#0f172a' }).catch(() => {});
+      StatusBar.setBackgroundColor({ color: '#080A12' }).catch(() => {});
     }
   }, []);
   useEffect(() => {
@@ -567,13 +567,21 @@ function AppContent() {
   }
  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
- return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={switchToCloud}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
+ return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={switchToCloud}/></aside><main className={`page-${page}`}>
+ {page==='home'&&<div className="dashboard-atmosphere" aria-hidden="true">
+   <div className="atmo-sunset-glow"/>
+   <div className="atmo-sun-orb"/>
+   <div className="atmo-horizon-silhouette"/>
+   <div className="atmo-window-frame"/>
+   <div className="atmo-book-badge"><span>Better</span><span>Students</span><span>Brighter</span><span>Futures</span></div>
+ </div>}
+ <header className="app-header"><div className="header-welcome"><p className="eyebrow">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1>{page==='home'&&<p className="header-subtitle">Keep showing up <span className="sparkle-icon" aria-hidden="true">✨</span></p>}</div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
  {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
  {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
- {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
+ {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} defaultTarget={settings?.defaultTarget??75} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
  {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} storageMode={storageMode} onSwitchToCloud={switchToCloud} onSwitchToLocal={switchToLocal} onOpenSignIn={switchToCloud} onBackToStorageOptions={backToStorageChooser} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{const targetUid=uid||prevUid.current;if(typeof navigator!=='undefined'&&navigator.onLine&&targetUid){try{await Promise.race([flushPendingPush(targetUid),new Promise(r=>setTimeout(r,2000))])}catch{}}if(targetUid)cancelPendingPush(targetUid);cancelPendingPush();prevUid.current='';await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
- </main><FloatingNav activeKey={page} onNavigate={navigate}/><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
+ </main><FloatingNav activeKey={page} onNavigate={navigate}/><button className={`fab-today${page==='home'?' is-home':''}`} onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
  {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Clear local data?</h2><p>{storageMode === 'local' ? 'This removes all attendance, subjects and timetable stored on this device.' : 'This removes attendance, subjects and timetable for this account from this device. Because you are signed in, your cloud copy will be restored immediately to keep your sync state consistent.'}</p>
  <button className="danger full" onClick={async()=>{await clearUser(uid);if(user && !isLocalUid(user.uid)){await syncOnLogin(user.uid,setSyncStatus);}await reload(storageMode === 'cloud');setModal(null);flash(storageMode === 'cloud'?'Local data cleared and cloud copy restored':'Local data cleared')}}>{storageMode === 'local' ? 'Clear local data' : 'Clear and restore from cloud'}</button></Modal>}
  {modal==='excel-export'&&<ExcelExportModal subjects={subjects} records={records} table={table} currentYear={new Date().getFullYear()} currentMonth={new Date().getMonth()} studentName={user.displayName??''} studentEmail={user.email??''} onSuccess={(fn,cnt)=>flash(`Exported ${cnt} records to ${fn}`)} onClose={()=>setModal(null)}/>}
@@ -597,11 +605,11 @@ function SyncBadge({status, mode, onSignIn}:{status:SyncStatus, mode?: StorageMo
     }
     return <span className="sync-badge local"><i className="dot"/>Local only</span>;
   }
-  if(status==='idle')return null;
+  const effectiveStatus = status === 'idle' ? 'synced' : status;
   const reason=getLastSyncErrorReason();
   const errorLabel=reason==='payload_too_large'?'Limit exceeded (>1MB)':'Sync paused — retrying';
-  const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:errorLabel}[status];
-  return <span className={`sync-badge ${status}`} title={reason==='payload_too_large'?"Data exceeds Firestore's 1MB limit. Export or remove older records.":undefined}>{status==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>
+  const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:errorLabel}[effectiveStatus];
+  return <span className={`sync-badge ${effectiveStatus}`} title={reason==='payload_too_large'?"Data exceeds Firestore's 1MB limit. Export or remove older records.":undefined}>{effectiveStatus==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>
 }
 export function Profile({user, storageMode, onSignIn}:{user:AuthUser, storageMode?: StorageMode | null, onSignIn?: () => void}){
   return (
@@ -619,15 +627,255 @@ export function Profile({user, storageMode, onSignIn}:{user:AuthUser, storageMod
     </div>
   );
 }
-function Dashboard({subjects,records,table,stats,restoring,onMark,onAdd,onEdit,onNav}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];stats:ReturnType<typeof overall>;restoring:boolean;onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onAdd:()=>void;onEdit:(s:Subject)=>void;onNav:(p:Page)=>void}) {
+function parseHHMM(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMark,onAdd,onEdit,onNav}:{subjects:Subject[];records:Attendance[];table:TimetableEntry[];stats:ReturnType<typeof overall>;defaultTarget?:number;restoring:boolean;onMark:(id:string,s:AttendanceStatus,date?:string,sessionId?:string)=>void;onAdd:()=>void;onEdit:(s:Subject)=>void;onNav:(p:Page)=>void}) {
   const { todayDay: currentTodayDay, nowTime } = useToday();
   const time=nowTime, today=table.filter(t=>t.day===currentTodayDay).sort((a,b)=>a.startTime.localeCompare(b.startTime));
   const currentClass=today.find(t=>t.startTime<=time&&t.endTime>time), next=today.find(t=>t.startTime>time);
   const [flashed,fireFlash]=useMarkFlash();
+
+  const clampedPct = Math.min(100, Math.max(0, stats.pct));
+  const ringRadius = 46;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringDashOffset = ringCircumference * (1 - clampedPct / 100);
+
+  const deltaVal = stats.total > 0 ? Math.round(stats.pct - defaultTarget) : 0;
+  const deltaBadgeText = stats.total === 0 ? `Target ${defaultTarget}%` : deltaVal >= 0 ? `↗ +${deltaVal}%` : `↗ ${stats.pct.toFixed(0)}%`;
+  const encouragementText = stats.total === 0
+    ? 'Add subjects & mark your first class'
+    : stats.pct >= 65
+    ? "You're doing great! Keep it up."
+    : `Attend upcoming classes to reach ${defaultTarget}%`;
+
+  const currentSubName = currentClass ? (subjects.find(s => s.id === currentClass.subjectId)?.name || currentClass.subject) : '';
+  const nextSubName = next ? (subjects.find(s => s.id === next.subjectId)?.name || next.subject) : '';
+
+  let rhythmPct = 0;
+  let minsLeft = 0;
+  if (currentClass) {
+    const startM = parseHHMM(currentClass.startTime);
+    const endM = parseHHMM(currentClass.endTime);
+    const nowM = parseHHMM(time);
+    const duration = Math.max(1, endM - startM);
+    const elapsed = Math.min(duration, Math.max(0, nowM - startM));
+    rhythmPct = Math.round((elapsed / duration) * 100);
+    minsLeft = Math.max(0, endM - nowM);
+  }
+
+  const scrollToToday = () => {
+    document.getElementById('todays-classes')?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+  };
+
   return <>
-    <section className="grid summary"><article className="overall card"><div><p>Overall attendance</p><h2>{stats.pct.toFixed(0)}<small>%</small></h2><span>{stats.present} present · {stats.absent} absent</span></div><div className="ring" style={{'--p':`${stats.pct}%`} as CSSProperties}><b>{stats.total}</b><small>classes</small></div></article>
-    <article className="card today"><p>Today’s rhythm</p>{!today.length?<><h3>Nothing scheduled</h3><span>Add your timetable to see class cues here.</span></>:currentClass?<><h3>Now · {currentClass.subject}</h3><span>{currentClass.startTime}–{currentClass.endTime} · {currentClass.room||'Room TBA'}</span>{next&&<div className="next">Next: {next.subject} at {next.startTime}</div>}</>:next?<><h3>College not started yet</h3><span>Next: {next.subject} at {next.startTime}</span></>:<><h3>College over</h3><span>Nice work — today’s classes are done.</span></>}</article>
-    <article className="card action"><Sparkles/><h3>Quick start</h3><button onClick={onAdd}><Plus/> Add subject</button><button className="text" onClick={()=>onNav('timetable')}>Set up timetable →</button></article></section>
+    <section className="dashboard-hero-stack">
+      {/* 1. Premium Overall Attendance Card */}
+      <article className="overall card luxury-overall">
+        <div className="overall-ambient-waves" aria-hidden="true" />
+        <div className="overall-top-row">
+          <div className="overall-title-group">
+            <span className="overall-icon-box" aria-hidden="true">
+              <BarChart3 size={17} />
+            </span>
+            <p>Overall attendance</p>
+          </div>
+          <button type="button" className="semester-pill" onClick={() => onNav('statistics')}>
+            <span>This Semester</span>
+            <ChevronRight size={13} className="semester-chevron" />
+          </button>
+        </div>
+
+        <div className="overall-body-row">
+          <div className="overall-metrics">
+            <div className="overall-pct-row">
+              <h2>{stats.pct.toFixed(0)}<small>%</small></h2>
+              <span className={`overall-delta-badge${stats.pct < 60 && stats.total > 0 ? ' is-warn' : ''}`}>
+                {deltaBadgeText}
+              </span>
+            </div>
+            <span className="overall-counts">
+              <b>{stats.present}</b> present <i className="dot-sep">·</i> <b>{stats.absent}</b> absent
+            </span>
+            <button type="button" className="overall-encouragement-pill" onClick={() => onNav('statistics')}>
+              <span className="target-bullseye" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12" cy="12" r="5" />
+                  <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                  <path d="M16 8l4-4M17 4h3v3" />
+                </svg>
+              </span>
+              <span className="encouragement-text">{encouragementText}</span>
+              <ChevronRight size={14} className="pill-arrow" />
+            </button>
+          </div>
+
+          <div className="ring luxury-ring" style={{'--p':`${stats.pct}%`} as CSSProperties}>
+            <svg className="ring-svg" viewBox="0 0 112 112" aria-hidden="true">
+              <defs>
+                <linearGradient id="luxuryRingGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#38BDF8" />
+                  <stop offset="35%" stopColor="#6366F1" />
+                  <stop offset="70%" stopColor="#C084FC" />
+                  <stop offset="92%" stopColor="#F472B6" />
+                  <stop offset="100%" stopColor="#FFFFFF" />
+                </linearGradient>
+              </defs>
+              <circle className="ring-track" cx="56" cy="56" r={ringRadius} />
+              <circle
+                className="ring-progress"
+                cx="56"
+                cy="56"
+                r={ringRadius}
+                stroke="url(#luxuryRingGrad)"
+                strokeDasharray={ringCircumference}
+                strokeDashoffset={ringDashOffset}
+              />
+            </svg>
+            <div className="ring-inner-label">
+              <b>{stats.total}</b>
+              <small>classes</small>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      {/* 2. Four Quick Access Shortcut Cards */}
+      <section className="quick-access-grid" aria-label="Quick access shortcuts">
+        <button type="button" className="qa-card qa-violet" onClick={() => onNav('timetable')}>
+          <span className="qa-icon-box" aria-hidden="true">
+            <CalendarDays size={20} />
+          </span>
+          <b className="qa-title">Timetable</b>
+          <small className="qa-desc">View schedule</small>
+        </button>
+
+        <button type="button" className="qa-card qa-amber" onClick={() => onNav('subjects')}>
+          <span className="qa-icon-box" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
+              <path d="M22 12A10 10 0 0 0 12 2v10z" />
+            </svg>
+          </span>
+          <b className="qa-title">Subjects</b>
+          <small className="qa-desc">Manage subjects</small>
+        </button>
+
+        <button type="button" className="qa-card qa-emerald" onClick={() => onNav('statistics')}>
+          <span className="qa-icon-box" aria-hidden="true">
+            <BarChart3 size={20} />
+          </span>
+          <b className="qa-title">Reports</b>
+          <small className="qa-desc">Detailed insights</small>
+        </button>
+
+        <button type="button" className="qa-card qa-rose" onClick={() => onNav('calendar')}>
+          <span className="qa-icon-box" aria-hidden="true">
+            <CalendarDays size={20} />
+          </span>
+          <b className="qa-title">Calendar</b>
+          <small className="qa-desc">Monthly view</small>
+        </button>
+      </section>
+
+      {/* 3. Today's Rhythm Card */}
+      <article className="card today luxury-rhythm">
+        <div className="rhythm-classroom-art" aria-hidden="true">
+          <div className="rhythm-sunbeam" />
+          <div className="rhythm-window-panes" />
+          <div className="rhythm-desk-silhouette" />
+          <div className="rhythm-wall-quote">
+            <span>Good</span>
+            <span>Students</span>
+            <span>Build</span>
+            <span>Great</span>
+            <span>Futures</span>
+          </div>
+        </div>
+
+        <div className="rhythm-top-row">
+          <div className="rhythm-title-group">
+            <span className="rhythm-icon-box" aria-hidden="true">
+              <BarChart3 size={15} />
+            </span>
+            <p>Today’s rhythm</p>
+          </div>
+          <span className="rhythm-date-chip">
+            <span className="sun-badge" aria-hidden="true">☀️</span>
+            {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+          </span>
+        </div>
+
+        {!today.length ? (
+          <div className="rhythm-body">
+            <h3>Nothing scheduled</h3>
+            <span className="rhythm-meta">Add your timetable to see class cues here.</span>
+            <button type="button" className="rhythm-next-pill" onClick={() => onNav('timetable')}>
+              <span className="hourglass-icon" aria-hidden="true">⌛</span>
+              <span className="rhythm-next-text">Set up your recurring timetable</span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        ) : currentClass ? (
+          <div className="rhythm-body">
+            <h3>Now · {currentSubName}</h3>
+            <span className="rhythm-meta">
+              {currentClass.startTime} – {currentClass.endTime} <i className="dot-sep">·</i> {currentClass.room || 'Room TBA'} <i className="dot-sep">·</i> {currentClass.type}
+            </span>
+            <div className="rhythm-progress-row">
+              <div className="rhythm-progress-track">
+                <i className="rhythm-progress-fill" style={{ width: `${Math.max(8, rhythmPct)}%` }} />
+              </div>
+              <small className="rhythm-mins-left">{minsLeft} min left</small>
+            </div>
+            <button type="button" className="rhythm-next-pill" onClick={scrollToToday}>
+              <span className="hourglass-icon" aria-hidden="true">⌛</span>
+              <span className="rhythm-next-text">
+                {next ? <>Next: <b>{nextSubName}</b> at {next.startTime}</> : <>Final scheduled class for today</>}
+              </span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        ) : next ? (
+          <div className="rhythm-body">
+            <h3>Next · {nextSubName}</h3>
+            <span className="rhythm-meta">
+              {next.startTime} – {next.endTime} <i className="dot-sep">·</i> {next.room || 'Room TBA'} <i className="dot-sep">·</i> {next.type}
+            </span>
+            <div className="rhythm-progress-row">
+              <div className="rhythm-progress-track">
+                <i className="rhythm-progress-fill" style={{ width: '0%' }} />
+              </div>
+              <small className="rhythm-mins-left">Starts at {next.startTime}</small>
+            </div>
+            <button type="button" className="rhythm-next-pill" onClick={scrollToToday}>
+              <span className="hourglass-icon" aria-hidden="true">⌛</span>
+              <span className="rhythm-next-text">Next: <b>{nextSubName}</b> at {next.startTime}</span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        ) : (
+          <div className="rhythm-body">
+            <h3>College over</h3>
+            <span className="rhythm-meta">Nice work — today’s classes are done.</span>
+            <div className="rhythm-progress-row">
+              <div className="rhythm-progress-track">
+                <i className="rhythm-progress-fill" style={{ width: '100%' }} />
+              </div>
+              <small className="rhythm-mins-left">Done for today</small>
+            </div>
+            <button type="button" className="rhythm-next-pill" onClick={scrollToToday}>
+              <span className="hourglass-icon" aria-hidden="true">⌛</span>
+              <span className="rhythm-next-text">Review today’s {today.length} {today.length === 1 ? 'class' : 'classes'}</span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
+      </article>
+    </section>
+
     <TodaysClasses entries={today} subjects={subjects} records={records} currentId={currentClass?.id} nextId={next?.id} restoring={restoring&&!table.length} onMark={onMark} onSetup={()=>onNav('timetable')}/>
     <section className="section-title"><div><h2>Your subjects</h2><p>One tap is all it takes.</p></div><button className="primary" onClick={onAdd}><Plus/> Add subject</button></section>
     {restoring&&!subjects.length?<SkeletonSubjects/>:!subjects.length?<Empty title="Start with your subjects" text="Add a subject or import your timetable, then your attendance will come to life." action="Add your first subject" onAction={onAdd}/>:<section className="subject-grid">{subjects.map(s=>{const x=subjectStats(s,records);return <article className={`subject card${flashed===s.id?' card-flash':''}`} key={s.id} style={{'--accent':s.color} as CSSProperties}><div className="subject-top"><span className="subject-icon">{s.code.slice(0,2)||'•'}</span><button className="more" onClick={()=>onEdit(s)} aria-label={`Edit ${s.name}`}>•••</button></div><h3>{s.name}</h3><p>{s.code||'No code'} · {s.teacher||'Teacher not set'}</p><div className="percent"><b>{x.pct.toFixed(0)}%</b><span>{x.present} / {x.total} classes</span></div><div className="progress"><i style={{width:`${Math.min(x.pct,100)}%`}}/></div><small className={x.state}>{x.total===0?'No classes yet':x.state!=='risk'?`Safe to miss ${x.bunk} classes`:x.required===-1?'Target 100% unreachable':`Attend next ${x.required} to reach ${s.target}%`}</small><div className="mark"><button aria-label="Mark absent" className="absent" onClick={()=>{fireFlash(s.id);onMark(s.id,'absent')}}>−</button><button aria-label="Mark present" className="present" onClick={()=>{fireFlash(s.id);onMark(s.id,'present')}}><Check/> Present</button></div></article>})}</section>}
@@ -645,19 +893,30 @@ function TodaysClasses({entries,subjects,records,currentId,nextId,restoring,onMa
   const [flashed,fireFlash]=useMarkFlash();
   const hit=(e:TimetableEntry,s:AttendanceStatus)=>{fireFlash(e.id);onMark(e.subjectId,s,date,e.id)};
   return <section id="todays-classes" className="todays-classes">
-    <div className="section-title"><div><h2>Today’s classes</h2><p>{restoring?'Fetching your timetable…':entries.length?'One tap marks the class':'Nothing on the timetable for today'}</p></div></div>
+    <div className="section-title todays-classes-header">
+      <div>
+        <h2>Today’s classes</h2>
+        <p>{restoring?'Fetching your timetable…':entries.length?'One tap marks the class':'Nothing on the timetable for today'}</p>
+      </div>
+      <button type="button" className="view-timetable-pill" onClick={onSetup}>
+        <span>View timetable</span>
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
     {restoring?<SkeletonToday/>:!entries.length?<Empty title="No classes today" text="Enjoy the day off, or set up your timetable if this looks wrong." action="Set up timetable" onAction={onSetup}/>:<div className="today-list">
-      {entries.map(e=>{
+      {entries.map((e, idx)=>{
         const subject=subjects.find(s=>s.id===e.subjectId);
         const record=records.find(r=>r.subjectId===e.subjectId&&r.date===date&&r.sessionId===e.id) ?? records.find(r=>r.subjectId===e.subjectId&&r.date===date&&(r.sessionId==='manual'||!entries.some(t=>t.id===r.sessionId)));
         const status=record?.status;
         const displayName=subject?.name||e.subject;
         const isOrphan=!subject;
-        return <article key={e.id} className={`card today-class${e.id===currentId?' now':''}${status==='cancelled'?' is-cancelled':''}${flashed===e.id?' card-flash':''}`} style={{'--accent':subject?.color??colors[0]} as CSSProperties}>
+        const accentColor = subject?.color ?? colors[idx % colors.length];
+        const dotColor = TYPE_COLOR[e.type] || accentColor;
+        return <article key={e.id} className={`card today-class${e.id===currentId?' now':''}${status==='cancelled'?' is-cancelled':''}${flashed===e.id?' card-flash':''}`} style={{'--accent':accentColor} as CSSProperties}>
           <div className="today-class-time"><b>{e.startTime}</b><small>{e.endTime}</small></div>
           <div className="today-class-info">
             <h3>{displayName}{e.id===currentId&&<span className="now-badge">Now</span>}{e.id===nextId&&<span className="next-badge">Next</span>}</h3>
-            <p><span className="type-badge" style={{'--type-color':TYPE_COLOR[e.type]||'var(--brand)'} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'}{status&&status!=='unmarked'&&<> · <b className={`status-tag-${status}`}>{status[0].toUpperCase()+status.slice(1)}</b></>}</p>
+            <p><i className="class-type-dot" style={{background:dotColor}} aria-hidden="true"/><span className="type-badge" style={{'--type-color':dotColor} as CSSProperties}>{e.type}</span> · {e.room||'Room TBA'}{status&&status!=='unmarked'&&<> · <b className={`status-tag-${status}`}>{status[0].toUpperCase()+status.slice(1)}</b></>}</p>
             {isOrphan&&<p className="field-error" style={{marginTop:4,fontSize:12}}>Unlinked class — link to a subject</p>}
           </div>
           <div className="today-class-actions">
