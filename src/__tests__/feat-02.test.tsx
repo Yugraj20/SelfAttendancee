@@ -14,17 +14,17 @@ describe('FEAT-02: First-launch chooser and Settings Data & Sync section', () =>
     const onSelect = vi.fn();
     render(<StorageChooser onSelectMode={onSelect} />);
 
-    expect(screen.getByText('Where should your data live?')).toBeDefined();
-    expect(screen.getByText('Keep it on this device')).toBeDefined();
-    expect(screen.getByText('Sign in & sync with Google')).toBeDefined();
+    expect(screen.getByText('Your personal attendance and timetable companion')).toBeDefined();
+    expect(screen.getByText('Use Local Storage')).toBeDefined();
+    expect(screen.getByText('Sign in with Google')).toBeDefined();
 
     // Select local mode
-    const localBtn = screen.getByRole('button', { name: /continue with local mode/i });
+    const localBtn = screen.getByRole('button', { name: /continue with local storage/i });
     fireEvent.click(localBtn);
     expect(onSelect).toHaveBeenCalledWith('local');
 
     // Select cloud mode
-    const cloudBtn = screen.getByRole('button', { name: /sign in with google/i });
+    const cloudBtn = screen.getByRole('button', { name: /continue with google/i });
     fireEvent.click(cloudBtn);
     expect(onSelect).toHaveBeenCalledWith('cloud');
   });
