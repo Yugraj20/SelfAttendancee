@@ -1,148 +1,210 @@
-# Self Attendance
+<div align="center">
 
-A production-ready, local-first attendance tracker built with React 18, TypeScript, Vite, Firebase Authentication, Firestore, IndexedDB, Google Gemini AI and a PWA application shell. Every screen reads and writes IndexedDB directly, so the app is instant and fully usable offline. Signing in with Google optionally mirrors your timetable, attendance, subjects and settings to a private Firestore document (`users/{uid}`), so the same data follows you across devices.
+# 🎓 Self Attendance
+
+### *Smart, Local-First Attendance Tracker & Timetable Companion for Students*
+
+[![Version](https://img.shields.io/badge/version-1.0.0-6366F1.svg?style=flat-square)](https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.0)
+[![Android APK](https://img.shields.io/badge/Android-APK%20Download-10B981.svg?style=flat-square&logo=android&logoColor=white)](https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk)
+[![Live Demo](https://img.shields.io/badge/Web%20App-Live%20Demo-38BDF8.svg?style=flat-square&logo=googlechrome&logoColor=white)](https://yugraj20.github.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
+[![React](https://img.shields.io/badge/React-18-blue.svg?style=flat-square&logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Capacitor](https://img.shields.io/badge/Capacitor-8-119EFF.svg?style=flat-square&logo=capacitor)](https://capacitorjs.com/)
+[![Firebase](https://img.shields.io/badge/Firebase-Auth%20%26%20Firestore-FFCA28.svg?style=flat-square&logo=firebase&logoColor=black)](https://firebase.google.com/)
+
+<br />
+
+[**🌐 Open Web Application**](https://yugraj20.github.io) • [**📲 Download Android APK**](https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk) • [**📖 Documentation**](#-key-features) • [**⚡ Quick Start**](#-quick-start)
+
+<br />
+
+<p align="center">
+  <img src="./docs/screenshots/mobile-dashboard.png" alt="Self Attendance Mobile Dashboard" width="340" style="border-radius: 28px; box-shadow: 0 20px 48px -12px rgba(0,0,0,0.6);" />
+</p>
+
+</div>
 
 ---
 
-## Quick Start & Testing Instructions
+## 🌟 Overview
+
+**Self Attendance** is a modern, privacy-respecting attendance tracker designed for college and university students. It operates **100% offline-first** using on-device IndexedDB storage so you never experience network lag. When you want your data to sync across your phone, tablet, and laptop, you can sign in with Google to mirror your records to a private, encrypted Firebase Firestore document.
+
+Built with a high-end **Neo-Glass & Bento Grid** interface inspired by luxury productivity apps, Self Attendance calculates exactly how many classes you can afford to miss (*"bunk"*) or must attend to stay above your target percentage (e.g. 75%).
+
+---
+
+## 📱 App Screenshots
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" width="50%">
+        <b>📱 Mobile Dashboard & Today's Rhythm</b><br/><br/>
+        <img src="./docs/screenshots/mobile-dashboard.png" alt="Mobile Dashboard" width="300" style="border-radius: 20px;" /><br/>
+        <em>Overall attendance progress ring, centered quick actions & active class cues</em>
+      </td>
+      <td align="center" width="50%">
+        <b>🔐 Storage Mode Selection</b><br/><br/>
+        <img src="./docs/screenshots/storage-chooser.png" alt="Storage Chooser Screen" width="380" style="border-radius: 20px;" /><br/>
+        <em>Choose between 100% offline Local Mode or Google Cloud Sync</em>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" colspan="2">
+        <b>💻 Desktop & Laptop View</b><br/><br/>
+        <img src="./docs/screenshots/desktop-dashboard.png" alt="Desktop Dashboard View" width="700" style="border-radius: 16px;" /><br/>
+        <em>Wide multi-column layout with detailed analytics, monthly calendar, and timetable editor</em>
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
+
+## ✨ Key Features
+
+### 🎨 1. Luxury Dark & Bento UI
+- **Cinematic Midnight Atmosphere**: Deep dark midnight background (`#080A12`) with subtle violet-blue ambient aurora gradients.
+- **Dynamic Attendance Ring**: Interactive circular SVG progress ring with multi-stop gradients reflecting real-time percentages.
+- **Centered Quick Access**: Tactile, compact shortcut cards for **Timetable**, **Subjects**, **Reports**, and **Calendar**.
+- **Responsive Floating Dock**: Glassmorphism bottom navigation bar tailored with mobile safe-area insets.
+- **Theme Parity**: Complete visual parity across **Dark**, **AMOLED True Black**, and **Clean Light** themes.
+
+### 🛡️ 2. Dual Storage Architecture
+- **Local-Only Mode**: Everything lives solely in your browser's or device's IndexedDB. Zero accounts required, 100% offline, zero server calls.
+- **Google Cloud Sync**: Sign in with Google (via native Google Play Services on Android or OAuth popup on web) to sync attendance across multiple devices via Firestore.
+- **Zero Lock-In**: Switch between Local and Cloud modes anytime in Settings with automatic safety backups and an interactive 3-way conflict resolver.
+
+### ⏰ 3. Today's Rhythm & Schedule
+- **Live Class Tracking**: Automatically detects the current ongoing lecture or lab and displays time elapsed and minutes remaining.
+- **Up Next Indicator**: Shows your next upcoming class with room numbers and teacher information.
+- **One-Tap Attendance Marking**: Mark Present or Absent with instant visual feedback and a one-click **Undo** toast.
+
+### 🧮 4. Smart Safe-to-Miss Math
+- **Safe Misses (Bunk Calculator)**: Tells you exactly how many consecutive classes you can safely skip while remaining at or above your target percentage.
+- **Recovery Requirement**: When in the risk zone, tells you how many consecutive classes you must attend to cross your target threshold.
+- **Integer Precision**: Avoids floating-point rounding errors and protects against `NaN` or `Infinity`.
+
+### 🤖 5. AI Timetable & Attendance Import (Google Gemini)
+- **Timetable Scanner**: Upload PDFs, timetable screenshots (PNG, JPG, WEBP), and let Gemini AI extract subjects, times, days, and room numbers.
+- **Attendance Export Parser**: Paste or upload unstructured raw text logs from college portals; Gemini extracts dates, subjects, and statuses.
+- **Human-in-the-Loop Review**: Preview and edit every detected entry before committing to database.
+
+### 📊 6. Reports & Data Portability
+- **Excel Export (`.xlsx`)**: Generate comprehensive monthly or semester attendance spreadsheets with present/absent summaries.
+- **Encrypted Local Backups**: Export and restore human-readable `.txt` backup payloads with pre-transaction validation.
+- **Single-Click Wipe**: Remove all data from local IndexedDB and cloud Firestore with a single verified action.
+
+---
+
+## 📐 Mathematical Formulation
+
+All attendance logic in [`src/math.ts`](./src/math.ts) uses exact integer math:
+
+| Metric | Condition | Formula |
+| :--- | :--- | :--- |
+| **Attendance %** | $\text{total} > 0$ | $$\text{pct} = \frac{100 \times \text{present}}{\text{present} + \text{absent}}$$ |
+| **Safe Misses ($B$)** | $\text{pct} \ge T$ | $$B = \left\lfloor \frac{100 \times \text{present} - T \times \text{total}}{T} \right\rfloor$$ |
+| **Required Classes ($R$)** | $\text{pct} < T \text{ and } T < 100$ | $$R = \left\lceil \frac{T \times \text{total} - 100 \times \text{present}}{100 - T} \right\rceil$$ |
+| **Unreachable Target** | $T = 100 \text{ and } \text{absent} > 0$ | Sentinel `-1` *(renders "Target 100% unreachable")* |
+
+---
+
+## 🛠️ Tech Stack & Architecture
+
+```mermaid
+graph TD
+    UI["React 18 + TypeScript UI"]
+    Cap["Capacitor 8 Native Bridge"]
+    IDB[("IndexedDB (Local-First Truth)")]
+    FS[("Google Cloud Firestore")]
+    Auth["Google OAuth / Firebase Auth"]
+    AI["Google Gemini 1.5/2.0 API"]
+
+    UI -->|Immediate Read / Write| IDB
+    UI -->|Native Sign-In / Hardware| Cap
+    Cap -->|Android Play Services| Auth
+    UI -->|Background Sync Mirror| FS
+    UI -->|Timetable & Text Extraction| AI
+```
+
+- **Frontend**: React 18, TypeScript, Vite 6, Lucide Icons, Recharts
+- **Local Database**: IndexedDB (native browser storage)
+- **Cloud & Auth**: Firebase Auth (Google Sign-In), Cloud Firestore
+- **Mobile Engine**: Capacitor 8 (Android WebView + native Java plugins)
+- **AI Engine**: Google Gemini API (REST SDK)
+- **Testing**: Vitest, JSDOM, Testing Library, fake-indexeddb
+
+---
+
+## ⚡ Quick Start
 
 ### Prerequisites
-- Node.js 20+
-- npm 10+
+- [Node.js](https://nodejs.org/) v20+
+- [npm](https://www.npmjs.com/) v10+
+- *(Optional for Android build)*: [Android Studio](https://developer.android.com/studio) & JDK 21
 
-### Installation & Development
+### 1. Clone & Install
 ```bash
-# 1. Install dependencies
+git clone https://github.com/Yugraj20/SelfAttendancee.git
+cd SelfAttendancee
 npm install
+```
 
-# 2. Configure environment
-cp .env.example .env.local
-# Add your Firebase and optional Gemini API keys to .env.local
+### 2. Configure Environment
+Create a `.env.local` file in the root directory:
+```env
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+VITE_GEMINI_API_KEY=your_optional_gemini_api_key
+```
 
-# 3. Run development server
+### 3. Run Development Server
+```bash
 npm run dev
 ```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-### Running Automated Tests
-The repository includes a comprehensive unit and characterization test suite built on Vitest, JSDOM, and fake-indexeddb:
+### 4. Run Automated Tests
 ```bash
-# Run all automated tests
 npm test
-
-# Run a specific test suite
-npm test bug004
 ```
 
-### Building for Production
-```bash
-# Run TypeScript typecheck and Vite production build
-npm run build
+---
 
-# Build and sync native Android project
+## 📦 Building for Android
+
+Self Attendance is configured with Capacitor 8 for Android:
+
+```bash
+# 1. Build the web distribution and sync Android project
 npm run build:android
+
+# 2. Build Debug APK using Gradle
+cd android
+./gradlew assembleDebug
+
+# 3. Locate compiled APK
+# Outputs to: android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
----
-
-## Android Application & Native Builds
-
-Self Attendance is packaged as a native Android application using Capacitor 8, delivering the exact same dark "Midnight Slate Utility" UI with native mobile enhancements:
-
-- **Storage Mode Chooser**: Choose between **Local-Only** (100% private, no account required, zero Firebase calls) and **Cloud Sync** (sign in with Google to sync across devices). Switch modes anytime in Settings with safety snapshots and a 3-way conflict resolver.
-- **Native Android Integration**: Native hardware back button navigation, dark status bar (`#0f172a`), safe area inset padding, and Android native share sheet for backups and Excel reports.
-- **On-Device Gemini API Key**: Configure your Google Gemini API key directly in Settings; stored on-device in IndexedDB so the binary never carries embedded secrets.
-- **Automated CI / CD**: Built automatically via GitHub Actions as Debug APK, Release APK, and Play Store AAB.
-
-For complete local build steps, keystore signing, and GitHub Secrets configuration, see [**ANDROID.md**](./ANDROID.md).
+You can download the pre-built, ready-to-install Android APK directly from [**GitHub Releases**](https://github.com/Yugraj20/SelfAttendancee/releases/latest).
 
 ---
 
-## Calculation Rules
+## 📄 License
 
-All attendance math in `src/math.ts` uses exact integer arithmetic to avoid floating-point inaccuracies:
-
-- **Current Attendance Percentage**:
-  $$\text{pct} = \frac{100 \times \text{present}}{\text{present} + \text{absent}}$$
-  *(Displayed rounded to 1 decimal place; compares exact integer $100 \times \text{present} \ge T \times \text{total}$)*
-- **Safe Misses (Bunk)**:
-  Only when at or above target $T$:
-  $$\text{bunk} = \left\lfloor \frac{100 \times \text{present} - T \times \text{total}}{T} \right\rfloor$$
-- **Required Consecutive Attendances**:
-  When below target $T$ ($T < 100$):
-  $$\text{required} = \left\lceil \frac{T \times \text{total} - 100 \times \text{present}}{100 - T} \right\rceil$$
-- **Target 100% Unreachable Sentinel**:
-  If target $T = 100$ and $\text{absent} > 0$, `required()` returns sentinel `-1` (displayed as "Target 100% unreachable", never rendering `Infinity` or `NaN`).
-- **Zero Classes Held**:
-  When $\text{total} = 0$, the UI displays a neutral "No classes yet" badge rather than a false risk state or "Attend next 0".
-- **Unmarked Status**:
-  Unmarked classes and cancelled classes are excluded from total counts to prevent distortion.
+This project is open-source and available under the [MIT License](./LICENSE).
 
 ---
 
-## Cloud Sync (Firestore) & Data Safety
-
-The app implements a multi-tier persistence and safety architecture:
-
-- **Local-First Source of Truth**: All mutations are written immediately to IndexedDB on device. Reads never wait on the network.
-- **Reconciliation Gate (`reconciled:{uid}`)**: Pushes to cloud (`pushToCloud`) no-op unless a verified cloud pull or local seeding has succeeded for that UID. If the initial cloud pull fails or the device is offline during login, the app displays a clear retry prompt and blocks cloud pushes to prevent overwriting cloud docs with empty local state.
-- **Per-UID Dirty State Tracking**: Every local mutation marks the UID as `dirty`. On login, if local dirty state exists, local data is preserved and pushed rather than wiped by the cloud copy.
-- **Lifecycle Flush**: Pending debounced cloud pushes are automatically flushed on `logout`, `pagehide`, and `visibilitychange: hidden`.
-- **Automatic Retry with Exponential Backoff**: Network sync errors retry automatically with exponential backoff (1s, 2s, 4s...) and listen to the browser's `online` event to resume syncing when connectivity is restored.
-- **Offline Guard**: Cloud push operations verify `navigator.onLine` and transition immediately to `'offline'` without hanging on server acknowledgments.
-- **Account Isolation**: Signing out immediately unmounts previous user data and resets navigation to Home, preventing cross-account data leaks.
-
----
-
-## AI Import Behavior
-
-### Timetable Import (PDF / Images)
-- Accepts PDF, PNG, JPG, JPEG, and WEBP files (up to 15 MB).
-- Sends the file to Google's Gemini model with schema validation.
-- Normalizes day names ("Mon" $\rightarrow$ "Monday") and times ("9:00" $\rightarrow$ "09:00").
-- Flags unparseable entries and reports imported vs. skipped row counts upon commit.
-- Stacks rows into a responsive 2-line card layout on mobile screens ($\le 560\text{px}$) so start and end times remain fully visible and editable.
-
-### Attendance Text Import (.txt)
-- Accepts unstructured plain text exports (up to 2 MB).
-- Gemini extracts subject, ISO date, and attendance status.
-- **Candidate Scoring & Tie-Breaking**: Matches existing subjects by exact name, code, acronym, and word overlap. If candidates are tied or ambiguous, the match defaults to `none`, requiring explicit user selection.
-- **Low Confidence Excluded by Default**: Rows flagged with low model confidence default to `include: false` and are grouped under "Needs review".
-- **Row Cap Protection**: For files exceeding 300 rows, rows beyond the cap are not imported unless the user explicitly checks the preview limit opt-in checkbox.
-- **Same-Day Classes Toggle**: Supports a toggle ("Treat repeated rows on one day as separate classes") to correctly handle multi-hour lectures or labs without dropping same-day records.
-- **In-Place Overwrite**: When "Replace with file" is chosen for an existing attendance date, the existing record ID and timetable `sessionId` are preserved in place.
-
----
-
-## Backup & Restore Format
-
-- **Local Date Filenames**: Backup files are downloaded as `self-attendance-backup-YYYY-MM-DD.txt` using the device's local calendar date rather than UTC.
-- **Delayed Object URL Revocation**: Download blob URLs are revoked with a 10-second delay to ensure downloads are not aborted by browsers.
-- **CRLF & UTF-8 BOM Normalization**: `parseBackup` strips UTF-8 BOM markers and normalizes Windows CRLF line endings.
-- **Strict Pre-Transaction Validation**: Validates all subject, attendance, timetable, and settings records before opening an IndexedDB transaction. Any corrupt or malformed payload aborts the transaction without leaving partial commits.
-- **Merge Timestamp Checks**: When restoring in "Merge" mode, records are only updated if the backup record's `updatedAt` is newer than the local record's `updatedAt`.
-- **Settings Restore Opt-In**: Merge restore preserves the user's current settings unless explicitly opted into restoring settings from the file.
-
----
-
-## Privacy Notice
-
-- **Local-first by default**: Attendance, subjects, timetables, and settings are stored locally on your device in IndexedDB and work completely offline.
-- **Cloud synchronization**: When signed in with Google, your data is mirrored to a private Firestore document (`users/{uid}`) to enable cross-device sync.
-- **AI import processing**: If you choose to import a timetable or attendance file, only that specific chosen file is sent to Google's Gemini API for analysis. Files are processed in memory and never retained by the app.
-
----
-
-## Deployment
-
-### Firebase Hosting & Firestore Rules
-The repository includes [`firebase.json`](./firebase.json) and [`firestore.rules`](./firestore.rules):
-```bash
-# 1. Build the production application
-npm run build
-
-# 2. Deploy Firestore security rules and static hosting
-firebase deploy --only firestore:rules,hosting
-```
-
-### GitHub Pages
-Deployments via GitHub Actions use `.github/workflows/deploy.yml` with `npm test` running prior to the build step.
+<div align="center">
+  <b>Built with ❤️ for students who want to keep showing up ✨</b>
+</div>

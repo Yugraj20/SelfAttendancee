@@ -1280,6 +1280,18 @@ export function SettingsPage({
       <h2>Self Attendance <small>v1.0.0</small></h2>
       <p>{subjects.length} subjects · {records.length} attendance records · {table.length} timetable sessions</p>
       <p className="muted">Local-first by design: every screen reads and writes IndexedDB directly, so the app stays fast and fully usable offline. Sign in to additionally back up and sync that data to your own Firestore record.</p>
+      {!Capacitor.isNativePlatform() && (
+        <div style={{ marginTop: 14 }}>
+          <a
+            href="https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk"
+            download="SelfAttendance.apk"
+            className="primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none', padding: '10px 16px', borderRadius: 12, fontSize: 13, fontWeight: 700 }}
+          >
+            <Download size={16} /> Download Android App (.apk)
+          </a>
+        </div>
+      )}
     </section>
   </div>;
 }
