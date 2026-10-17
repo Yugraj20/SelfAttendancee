@@ -4,7 +4,7 @@
 
 ### *Smart, Local-First Attendance Tracker & Timetable Companion for Students*
 
-[![Version](https://img.shields.io/badge/version-1.0.0-6366F1.svg?style=flat-square)](https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.0.1-6366F1.svg?style=flat-square)](https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.1)
 [![Android APK](https://img.shields.io/badge/Android-APK%20Download-10B981.svg?style=flat-square&logo=android&logoColor=white)](https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk)
 [![Live Demo](https://img.shields.io/badge/Web%20App-Live%20Demo-38BDF8.svg?style=flat-square&logo=googlechrome&logoColor=white)](https://yugraj20.github.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)

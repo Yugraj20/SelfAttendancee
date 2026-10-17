@@ -144,8 +144,8 @@ describe('App Updater Logic', () => {
       vi.spyOn(Date, 'now').mockReturnValue(now);
 
       const mockRelease = {
-        tag_name: 'v1.0.1',
-        html_url: 'https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.1',
+        tag_name: 'v1.0.2',
+        html_url: 'https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.2',
         body: 'Bug fixes and performance improvements',
         assets: [
           { name: 'SelfAttendance.apk', browser_download_url: 'https://github.com/downloads/SelfAttendance.apk' },
@@ -154,25 +154,25 @@ describe('App Updater Logic', () => {
 
       const info = await checkAppUpdate({ forceCheck: true, mockRelease });
       expect(info).not.toBeNull();
-      expect(info?.latestVersion).toBe('v1.0.1');
+      expect(info?.latestVersion).toBe('v1.0.2');
       expect(info?.isForced).toBe(false);
       expect(info?.daysRemaining).toBe(3);
       expect(info?.downloadUrl).toBe('https://github.com/downloads/SelfAttendance.apk');
 
       // Verify localStorage was set
-      const storageKey = getStorageKey('1.0.1');
+      const storageKey = getStorageKey('1.0.2');
       expect(localStorage.getItem(storageKey)).toBe(String(now));
     });
 
     it('locks out user (isForced = true) when 3 days have passed since first seen', async () => {
-      const cleanVersion = '1.0.1';
+      const cleanVersion = '1.0.2';
       const storageKey = getStorageKey(cleanVersion);
       const fourDaysAgo = Date.now() - 4 * 24 * 60 * 60 * 1000;
       localStorage.setItem(storageKey, String(fourDaysAgo));
 
       const mockRelease = {
-        tag_name: 'v1.0.1',
-        html_url: 'https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.1',
+        tag_name: 'v1.0.2',
+        html_url: 'https://github.com/Yugraj20/SelfAttendancee/releases/tag/v1.0.2',
         body: 'Mandatory security update',
       };
 

@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import packageJson from '../package.json';
 
-export const CURRENT_APP_VERSION = packageJson.version || '1.0.0';
+export const CURRENT_APP_VERSION = packageJson.version || '1.0.1';
 export const GITHUB_REPO = 'Yugraj20/SelfAttendancee';
 export const GRACE_PERIOD_MS = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
 
