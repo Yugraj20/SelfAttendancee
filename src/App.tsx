@@ -29,6 +29,8 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { exportOrShareFile } from './native-file';
+import { checkAppUpdate, dismissUpdateForSession, isDismissedForSession, CURRENT_APP_VERSION, type UpdateInfo } from './updater';
+import { UpdateModal } from './components/UpdateModal';
 
 type Page='home'|'subjects'|'calendar'|'timetable'|'statistics'|'settings';
 const colors=['#6d5dfc','#20c997','#ff8d5c','#e95d9a','#3989ff','#e0a526'];
@@ -208,7 +210,32 @@ function AppContent() {
     if(undoTimer.current)window.clearTimeout(undoTimer.current);
     undoTimer.current=window.setTimeout(()=>{setToast('');setShowUndo(false);if(undo)pendingUndo.current=null},undo?6500:3500);
   };
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const prevUid=useRef<string>('');
+
+  const handleDismissUpdate = () => {
+    if (updateInfo && !updateInfo.isForced) {
+      dismissUpdateForSession(updateInfo.latestVersion);
+      setUpdateInfo(null);
+    }
+  };
+
+  const handleManualCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const info = await checkAppUpdate({ forceCheck: true });
+      if (info) {
+        setUpdateInfo(info);
+      } else {
+        flash(`You are on the latest version (v${CURRENT_APP_VERSION})`);
+      }
+    } catch {
+      flash('Could not check for updates. Check your connection.');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   useEffect(() => {
     if (storageMode !== 'local') return;
@@ -357,11 +384,55 @@ function AppContent() {
       StatusBar.setBackgroundColor({ color: '#080A12' }).catch(() => {});
     }
   }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+
+    const runSilentUpdateCheck = async () => {
+      try {
+        const info = await checkAppUpdate();
+        if (cancelled || !info) return;
+        if (!info.isForced && isDismissedForSession(info.latestVersion)) {
+          return;
+        }
+        setUpdateInfo(info);
+      } catch {
+        // Silently ignore network failures or offline state
+      }
+    };
+
+    runSilentUpdateCheck();
+
+    let resumeListener: (() => void) | undefined;
+    CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        runSilentUpdateCheck();
+      }
+    }).then(handle => {
+      resumeListener = () => { void handle.remove(); };
+    });
+
+    return () => {
+      cancelled = true;
+      resumeListener?.();
+    };
+  }, []);
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     let removeListener: (() => void) | undefined;
     CapApp.addListener('backButton', () => {
-      if (modal) {
+      if (updateInfo) {
+        if (updateInfo.isForced) {
+          // Lockout mode: back button cannot bypass mandatory update
+          void CapApp.exitApp();
+        } else {
+          // Grace period active: dismiss reminder for this session
+          dismissUpdateForSession(updateInfo.latestVersion);
+          setUpdateInfo(null);
+        }
+      } else if (modal) {
         setModal(null);
       } else if (conflictState) {
         setConflictState(null);
@@ -376,7 +447,7 @@ function AppContent() {
     return () => {
       removeListener?.();
     };
-  }, [modal, conflictState, page]);
+  }, [modal, conflictState, page, updateInfo]);
  const reload=async(push=true)=>{if(!uid)return;const d=await userData(uid);setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings);if(push)pushToCloud(uid,setSyncStatus)};
  const saveSubject=async(s:Subject)=>{await put('subjects',s);await reload();setModal(null);flash('Subject saved')};
  const deleteSubject=async(s:Subject, history:boolean)=>{
@@ -538,24 +609,30 @@ function AppContent() {
     }
   };
 
- const stats=useMemo(()=>overall(subjects,records),[subjects,records]);
- const navigate=(p:Page)=>setPage(p);
- if (storageMode === null) return <StorageChooser onSelectMode={handleSelectMode} busy={authBusy} error={authError} />;
- if(loading)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your attendance…</div>;
- if (conflictState) {
-   return (
-     <div className="app">
-       <ConflictModal
-         localData={conflictState.localData}
-         cloudData={conflictState.cloudData}
-         onResolve={handleConflictResolution}
-         onClose={() => setConflictState(null)}
-       />
-     </div>
-   );
- }
- if(!user || (storageMode === 'cloud' && isLocalUid(user.uid))) return <StorageChooser onSelectMode={handleSelectMode} busy={authBusy} error={authError} />;
-  if(!settings)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your settings…</div>;
+  const stats=useMemo(()=>overall(subjects,records),[subjects,records]);
+  const navigate=(p:Page)=>setPage(p);
+
+  const updateModalNode = updateInfo ? (
+    <UpdateModal updateInfo={updateInfo} onDismiss={handleDismissUpdate} />
+  ) : null;
+
+  if (storageMode === null) return <><StorageChooser onSelectMode={handleSelectMode} busy={authBusy} error={authError} />{updateModalNode}</>;
+  if(loading)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your attendance…{updateModalNode}</div>;
+  if (conflictState) {
+    return (
+      <div className="app">
+        <ConflictModal
+          localData={conflictState.localData}
+          cloudData={conflictState.cloudData}
+          onResolve={handleConflictResolution}
+          onClose={() => setConflictState(null)}
+        />
+        {updateModalNode}
+      </div>
+    );
+  }
+  if(!user || (storageMode === 'cloud' && isLocalUid(user.uid))) return <><StorageChooser onSelectMode={handleSelectMode} busy={authBusy} error={authError} />{updateModalNode}</>;
+  if(!settings)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your settings…{updateModalNode}</div>;
   if(syncFailed&&!subjects.length&&!records.length){
     const r=getLastSyncErrorReason();
     const msg = r==='invalid_data'
@@ -563,27 +640,28 @@ function AppContent() {
       : r==='payload_too_large'
       ? "Your cloud copy exceeds Firestore's 1 MB document limit and cannot be synced."
       : "Couldn't reach your cloud copy. Check your internet connection and retry.";
-    return <div className="center"><p style={{marginBottom:16}}>{msg}</p><button className="primary" onClick={retryLoginSync}>Retry</button></div>;
+    return <div className="center"><p style={{marginBottom:16}}>{msg}</p><button className="primary" onClick={retryLoginSync}>Retry</button>{updateModalNode}</div>;
   }
- if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
- const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
- return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={switchToCloud}/></aside><main className={`page-${page}`}>
- {page==='home'&&<div className="dashboard-atmosphere" aria-hidden="true">
-   <div className="atmo-aurora" />
-   <div className="atmo-overlay" />
- </div>}
- <header className="app-header"><div className="header-welcome"><p className="eyebrow">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1>{page==='home'&&<p className="header-subtitle">Keep showing up <span className="sparkle-icon" aria-hidden="true">✨</span></p>}</div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><a href="https://buymeacoffee.com/yugraj20" target="_blank" rel="noopener noreferrer" className="bmac-header-btn" title="Buy me a coffee" aria-label="Buy me a coffee"><Coffee size={16} className="bmac-icon" /><span className="bmac-text">Buy me a coffee</span></a><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings"><UserAvatar user={user} alt="" showFallback/></button></div></header>
- {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
- {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
- {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} defaultTarget={settings?.defaultTarget??75} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
- {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
- {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} storageMode={storageMode} onSwitchToCloud={switchToCloud} onSwitchToLocal={switchToLocal} onOpenSignIn={switchToCloud} onBackToStorageOptions={backToStorageChooser} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{const targetUid=uid||prevUid.current;if(typeof navigator!=='undefined'&&navigator.onLine&&targetUid){try{await Promise.race([flushPendingPush(targetUid),new Promise(r=>setTimeout(r,2000))])}catch{}}if(targetUid)cancelPendingPush(targetUid);cancelPendingPush();prevUid.current='';await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
- </main><FloatingNav activeKey={page} onNavigate={navigate}/><button className={`fab-today${page==='home'?' is-home':''}`} onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
- {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Remove all data?</h2><p>{storageMode === 'local' ? 'This permanently removes all your attendance records, subjects, timetable, and settings from this device. This action cannot be undone.' : 'This permanently removes all your attendance records, subjects, timetable, and settings from everywhere — both this device and your Google Cloud account. This action cannot be undone.'}</p>
- <button className="danger full" onClick={async()=>{await removeAllUserData(uid, setSyncStatus);await reload(false);setModal(null);flash('All data removed')}}>Remove all data</button></Modal>}
- {modal==='excel-export'&&<ExcelExportModal subjects={subjects} records={records} table={table} currentYear={new Date().getFullYear()} currentMonth={new Date().getMonth()} studentName={user.displayName??''} studentEmail={user.email??''} onSuccess={(fn,cnt)=>flash(`Exported ${cnt} records to ${fn}`)} onClose={()=>setModal(null)}/>}
- {modal==='quick-mark'&&<QuickMarkModal subjects={subjects} records={records} table={table} onMark={mark} onNavigateHome={()=>{setModal(null);navigate('home')}} onClose={()=>setModal(null)}/>}
- </div>
+  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…{updateModalNode}</div>;
+  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
+  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={switchToCloud}/></aside><main className={`page-${page}`}>
+  {page==='home'&&<div className="dashboard-atmosphere" aria-hidden="true">
+    <div className="atmo-aurora" />
+    <div className="atmo-overlay" />
+  </div>}
+  <header className="app-header"><div className="header-welcome"><p className="eyebrow">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1>{page==='home'&&<p className="header-subtitle">Keep showing up <span className="sparkle-icon" aria-hidden="true">✨</span></p>}</div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><a href="https://buymeacoffee.com/yugraj20" target="_blank" rel="noopener noreferrer" className="bmac-header-btn" title="Buy me a coffee" aria-label="Buy me a coffee"><Coffee size={16} className="bmac-icon" /><span className="bmac-text">Buy me a coffee</span></a><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings"><UserAvatar user={user} alt="" showFallback/></button></div></header>
+  {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
+  {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
+  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} defaultTarget={settings?.defaultTarget??75} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
+  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
+  {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} storageMode={storageMode} onSwitchToCloud={switchToCloud} onSwitchToLocal={switchToLocal} onOpenSignIn={switchToCloud} onBackToStorageOptions={backToStorageChooser} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{const targetUid=uid||prevUid.current;if(typeof navigator!=='undefined'&&navigator.onLine&&targetUid){try{await Promise.race([flushPendingPush(targetUid),new Promise(r=>setTimeout(r,2000))])}catch{}}if(targetUid)cancelPendingPush(targetUid);cancelPendingPush();prevUid.current='';await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}} onCheckUpdate={handleManualCheckUpdate} checkingUpdate={checkingUpdate}/>}
+  </main><FloatingNav activeKey={page} onNavigate={navigate}/><button className={`fab-today${page==='home'?' is-home':''}`} onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
+  {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Remove all data?</h2><p>{storageMode === 'local' ? 'This permanently removes all your attendance records, subjects, timetable, and settings from this device. This action cannot be undone.' : 'This permanently removes all your attendance records, subjects, timetable, and settings from everywhere — both this device and your Google Cloud account. This action cannot be undone.'}</p>
+  <button className="danger full" onClick={async()=>{await removeAllUserData(uid, setSyncStatus);await reload(false);setModal(null);flash('All data removed')}}>Remove all data</button></Modal>}
+  {modal==='excel-export'&&<ExcelExportModal subjects={subjects} records={records} table={table} currentYear={new Date().getFullYear()} currentMonth={new Date().getMonth()} studentName={user.displayName??''} studentEmail={user.email??''} onSuccess={(fn,cnt)=>flash(`Exported ${cnt} records to ${fn}`)} onClose={()=>setModal(null)}/>}
+  {modal==='quick-mark'&&<QuickMarkModal subjects={subjects} records={records} table={table} onMark={mark} onNavigateHome={()=>{setModal(null);navigate('home')}} onClose={()=>setModal(null)}/>}
+  {updateModalNode}
+  </div>
 }
 function Brand(){return <div className="brand"><span>✓</span><b>Self Attendance</b></div>}
 function SyncBadge({status, mode, onSignIn}:{status:SyncStatus, mode?: StorageMode | null, onSignIn?: () => void}){
@@ -1145,7 +1223,9 @@ export function SettingsPage({
   onRestore,
   onImportAttendance,
   onClear,
-  onLogout
+  onLogout,
+  onCheckUpdate,
+  checkingUpdate,
 }:{
   user: AuthUser;
   settings: Settings;
@@ -1164,6 +1244,8 @@ export function SettingsPage({
   onImportAttendance: () => void;
   onClear: () => void;
   onLogout: () => void;
+  onCheckUpdate?: () => void;
+  checkingUpdate?: boolean;
 }){
   const [targetDraft, setTargetDraft] = useState(() => String(settings.defaultTarget));
   const [geminiKeyDraft, setGeminiKeyDraft] = useState(() => getGeminiApiKey());
@@ -1277,10 +1359,10 @@ export function SettingsPage({
       </div>
     </section>
     <section className="card about">
-      <h2>Self Attendance <small>v1.0.0</small></h2>
+      <h2>Self Attendance <small>v{CURRENT_APP_VERSION}</small></h2>
       <p>{subjects.length} subjects · {records.length} attendance records · {table.length} timetable sessions</p>
       <p className="muted">Local-first by design: every screen reads and writes IndexedDB directly, so the app stays fast and fully usable offline. Sign in to additionally back up and sync that data to your own Firestore record.</p>
-      {!Capacitor.isNativePlatform() && (
+      {!Capacitor.isNativePlatform() ? (
         <div style={{ marginTop: 14 }}>
           <a
             href="https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk"
@@ -1290,6 +1372,19 @@ export function SettingsPage({
           >
             <Download size={16} /> Download Android App (.apk)
           </a>
+        </div>
+      ) : (
+        <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={onCheckUpdate}
+            disabled={checkingUpdate}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 12, fontSize: 13, fontWeight: 600 }}
+          >
+            <RotateCcw size={15} className={checkingUpdate ? 'spinner' : ''} />
+            {checkingUpdate ? 'Checking for updates…' : 'Check for Updates'}
+          </button>
         </div>
       )}
     </section>
