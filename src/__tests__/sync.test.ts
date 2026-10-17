@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as firestoreModule from 'firebase/firestore';
-import { syncOnLogin, pushToCloud, cancelPendingPush, flushPendingPush, _setFirestoreForTesting, _clearAllPendingPushesForTesting } from '../sync';
+import { syncOnLogin, pushToCloud, cancelPendingPush, flushPendingPush, removeAllUserData, _setFirestoreForTesting, _clearAllPendingPushesForTesting } from '../sync';
 import { isReconciled, put, setReconciled, userData, clearUser } from '../db';
 import { resetTestDb, createMockFirestore, sampleSubject, sampleAttendance, sampleSettings } from '../test/helpers';
 
@@ -13,6 +13,7 @@ vi.mock('firebase/firestore', async (importOriginal) => {
     getDoc: vi.fn(),
     getDocFromServer: vi.fn(),
     setDoc: vi.fn(),
+    deleteDoc: vi.fn(),
   };
 });
 
@@ -28,6 +29,7 @@ describe('sync.ts cloud sync operations', () => {
     vi.mocked(firestoreModule.getDoc).mockImplementation(mockFirestore.getDoc as any);
     vi.mocked(firestoreModule.getDocFromServer).mockImplementation(mockFirestore.getDoc as any);
     vi.mocked(firestoreModule.setDoc).mockImplementation(mockFirestore.setDoc as any);
+    vi.mocked(firestoreModule.deleteDoc).mockImplementation(mockFirestore.deleteDoc as any);
   });
 
   afterEach(() => {
@@ -328,5 +330,26 @@ describe('sync.ts cloud sync operations', () => {
     const local = await userData(uid);
     expect(local.attendance).toHaveLength(1);
     expect(local.attendance[0].id).toBe('a1');
+  });
+
+  it('removeAllUserData deletes local IndexedDB data and cloud Firestore document while keeping reconciled status', async () => {
+    const sub = sampleSubject({ uid, id: 'sub-del', name: 'To Be Deleted' });
+    await put('subjects', sub);
+    mockFirestore.docs.set(`users/${uid}`, {
+      subjects: [sub],
+      attendance: [],
+      timetable: [],
+      settings: sampleSettings({ uid }),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await removeAllUserData(uid);
+
+    const local = await userData(uid);
+    expect(local.subjects).toHaveLength(0);
+    expect(local.attendance).toHaveLength(0);
+    expect(local.timetable).toHaveLength(0);
+    expect(mockFirestore.docs.has(`users/${uid}`)).toBe(false);
+    expect(await isReconciled(uid)).toBe(true);
   });
 });

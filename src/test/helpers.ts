@@ -28,6 +28,11 @@ export function createMockFirestore(initialDocs: MockFirestoreData = {}) {
     docs.set(path, JSON.parse(JSON.stringify(data)));
   });
 
+  const deleteDoc = vi.fn(async (docRef: any) => {
+    const path = docRef?.path ?? (typeof docRef === 'string' ? docRef : `users/${docRef?.id}`);
+    docs.delete(path);
+  });
+
   const doc = vi.fn((_fs: any, collection: string, id: string) => {
     return { id, path: `${collection}/${id}` };
   });
@@ -39,6 +44,7 @@ export function createMockFirestore(initialDocs: MockFirestoreData = {}) {
     docs,
     getDoc,
     setDoc,
+    deleteDoc,
     doc,
   };
 }

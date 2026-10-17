@@ -2,11 +2,11 @@
 // write happens there first, instantly, whether or not the user is signed in. This module mirrors
 // that data to Firestore at `users/{uid}` so a signed-in user can pick up the same data on another
 // device. All of it is best-effort: if Firestore is unreachable, local reads/writes are unaffected.
-import { doc, getDocFromServer, setDoc, type Firestore } from 'firebase/firestore';
+import { deleteDoc, doc, getDocFromServer, setDoc, type Firestore } from 'firebase/firestore';
 import { firestore } from './firebase';
-import { isDirty, isReconciled, restore, setDirty, setReconciled, userData, getDirtyRevision, clearDirty, markDirty } from './db';
+import { clearUser, isDirty, isReconciled, restore, setDirty, setReconciled, userData, getDirtyRevision, clearDirty, markDirty } from './db';
 import type { Attendance, Settings, Subject, TimetableEntry } from './types';
-import { isLocalUid } from './storage-mode';
+import { isLocalUid, LOCAL_UID } from './storage-mode';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
 /** What a login reconcile actually did, so the caller never has to guess from a boolean. */
@@ -359,6 +359,44 @@ export function cancelPendingPush(uid?: string) {
   activeUids.delete(uid);
   statusListeners.delete(uid);
   inFlightPushes.delete(uid);
+}
+
+export async function removeAllUserData(uid: string, onStatus?: (s: SyncStatus) => void): Promise<void> {
+  if (!uid) return;
+  cancelPendingPush(uid);
+  if (uid !== LOCAL_UID) {
+    cancelPendingPush(LOCAL_UID);
+  }
+  await clearUser(uid);
+  if (uid !== LOCAL_UID) {
+    await clearUser(LOCAL_UID);
+  }
+  if (isLocalUid(uid)) {
+    onStatus?.('idle');
+    return;
+  }
+  await setReconciled(uid, true);
+  const fsInstance = getFirestoreInstance();
+  if (!fsInstance) return;
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  if (!isOnline) {
+    await markDirty(uid);
+    onStatus?.('offline');
+    return;
+  }
+  try {
+    onStatus?.('syncing');
+    if (typeof deleteDoc === 'function') {
+      await deleteDoc(userDoc(fsInstance, uid));
+    }
+    lastSyncErrorReason = null;
+    onStatus?.('synced');
+  } catch (e) {
+    console.error('Cloud sync (delete) failed:', e);
+    await markDirty(uid);
+    const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    onStatus?.(online ? 'error' : 'offline');
+  }
 }
 
 export function _clearAllPendingPushesForTesting() {
