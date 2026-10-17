@@ -145,6 +145,17 @@ async function withTimeoutAndRetry<T>(fn: () => Promise<T>, timeoutMs = 30000, m
   throw lastErr;
 }
 
+import {
+  DEFAULT_APK_GEMINI_KEY,
+  checkAiQuota,
+  recordAiUsage,
+  getAiMonthlyUsage,
+  isUsingSharedKey,
+  MAX_MONTHLY_AI_USES,
+} from './ai-quota';
+
+export { DEFAULT_APK_GEMINI_KEY, checkAiQuota, recordAiUsage, getAiMonthlyUsage, isUsingSharedKey, MAX_MONTHLY_AI_USES };
+
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
 export function getGeminiApiKey(): string {
@@ -152,7 +163,9 @@ export function getGeminiApiKey(): string {
     const customKey = localStorage.getItem('selfattendance_gemini_api_key');
     if (customKey && customKey.trim()) return customKey.trim();
   } catch {}
-  return (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+  const envKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+  if (envKey) return envKey;
+  return DEFAULT_APK_GEMINI_KEY;
 }
 
 export function setGeminiApiKey(key: string): void {
@@ -188,9 +201,17 @@ export function classifyGeminiError(error: unknown): Error {
   return new Error('Could not analyze file with Gemini. Check your connection and try again.');
 }
 
-export async function extractTimetable(file: File): Promise<DetectedEntry[]> {
+export async function extractTimetable(file: File, uid?: string): Promise<DetectedEntry[]> {
   const key = getGeminiApiKey();
   if (!key) throw classifyGeminiError(new Error('AI import is not configured. Add an API key in Settings.'));
+
+  const quota = checkAiQuota(uid);
+  if (!quota.allowed) {
+    throw new Error(
+      `Monthly free AI limit reached (${quota.max}/${quota.max} used). Resets on ${quota.resetDate}. You can enter your personal Gemini API key in Settings to continue.`
+    );
+  }
+
   if (file.size > 15 * 1024 * 1024) throw new Error('File is too large. Please use a file under 15 MB.');
   const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
   if (!allowed.includes(file.type)) throw new Error('Use a PDF, PNG, JPG, JPEG, or WEBP timetable.');
@@ -222,6 +243,12 @@ export async function extractTimetable(file: File): Promise<DetectedEntry[]> {
     }
     const validated = validateTimetableResponse(data);
     if (!validated.entries.length) throw new Error('No timetable entries were detected. Try a clearer file.');
+
+    // Only record usage upon successful detection if on shared developer key
+    if (quota.isSharedKey) {
+      recordAiUsage(uid);
+    }
+
     return validated.entries;
   } catch (e) {
     if (e instanceof Error && e.message.includes('No timetable')) throw e;
@@ -245,9 +272,17 @@ Rules:
 - Do not deduplicate or reorder. Return every record in the order it appears.
 - "warnings": short plain-English notes about anything in the file you could not interpret. Use an empty array when there is nothing to report.`;
 
-export async function extractAttendance(file: File): Promise<ParsedAttendance> {
+export async function extractAttendance(file: File, uid?: string): Promise<ParsedAttendance> {
   const key = getGeminiApiKey();
   if (!key) throw classifyGeminiError(new Error('AI import is not configured. Add an API key in Settings.'));
+
+  const quota = checkAiQuota(uid);
+  if (!quota.allowed) {
+    throw new Error(
+      `Monthly free AI limit reached (${quota.max}/${quota.max} used). Resets on ${quota.resetDate}. You can enter your personal Gemini API key in Settings to continue.`
+    );
+  }
+
   const isTxt = file.name.toLowerCase().endsWith('.txt') && (!file.type || file.type === 'text/plain');
   if (!isTxt) throw new Error('Attendance import needs a plain .txt file. Export or paste your attendance into a text file and try again.');
   if (file.size > 2 * 1024 * 1024) throw new Error('That file is too large. Please use a .txt file under 2 MB.');
@@ -284,6 +319,11 @@ export async function extractAttendance(file: File): Promise<ParsedAttendance> {
   const validated = validateAttendanceResponse(data);
   if (!validated.records.length) {
     throw new Error('Gemini could not find any attendance records in that file. Check that the text actually contains attendance data, then retry.');
+  }
+
+  // Only record usage upon successful detection if on shared developer key
+  if (quota.isSharedKey) {
+    recordAiUsage(uid);
   }
 
   const warnings = [

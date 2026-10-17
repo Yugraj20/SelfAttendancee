@@ -7,7 +7,7 @@ import { auth, firebaseConfigured, logout, signIn, type AuthUser } from './fireb
 import { cancelPendingPush, flushPendingPush, getLastSyncErrorReason, pushToCloud, removeAllUserData, syncOnLogin, type SyncStatus } from './sync';
 import { clearUser, getLastQuarantineReport, id, importAttendanceData, importTimetableData, isReconciled, markDirty, put, remove, restore, setReconciled, userData, type QuarantineReport } from './db';
 import { dateISO, overall, subjectStats, trend } from './math';
-import { extractAttendance, extractTimetable, getGeminiApiKey, setGeminiApiKey } from './gemini';
+import { extractAttendance, extractTimetable, getGeminiApiKey, setGeminiApiKey, checkAiQuota, getAiMonthlyUsage, isUsingSharedKey, MAX_MONTHLY_AI_USES } from './gemini';
 import { analyse, annotate, buildWrites, summarise, validISO, willImport } from './attendance-import';
 import { makeBackup, parseBackup } from './backup';
 import type { Attendance, AttendanceStatus, BackupPayload, DetectedEntry, DetectedStatus, ReviewRow, Settings, Subject, SubjectGroup, TimetableEntry } from './types';
@@ -1338,7 +1338,7 @@ export function SettingsPage({
       <label>Gemini API Key
         <input
           type="password"
-          placeholder="Enter Gemini API key"
+          placeholder="Enter custom Gemini API key"
           value={geminiKeyDraft}
           onChange={e => {
             setGeminiKeyDraft(e.target.value);
@@ -1346,7 +1346,17 @@ export function SettingsPage({
           }}
         />
       </label>
-      <p className="muted">Stored locally on this device only. Used for AI Timetable and Attendance imports.</p>
+      <div style={{ marginTop: 8 }}>
+        {isUsingSharedKey() ? (
+          <p className="muted" style={{ fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+            Using shared app key: <b>{getAiMonthlyUsage(user.uid)} of {MAX_MONTHLY_AI_USES} free imports used this month</b>. Resets on the 1st of next month. Add your own Gemini API key above for unlimited imports.
+          </p>
+        ) : (
+          <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: 'var(--brand)' }}>
+            ✓ Using your personal Gemini API key with unlimited usage.
+          </p>
+        )}
+      </div>
     </section>
     <section className="card">
       <h2>Your data</h2>
@@ -1473,7 +1483,7 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
     setError('');
     setSummary(null);
     try{
-      const res = await extractTimetable(f);
+      const res = await extractTimetable(f, uid);
       if(reqIdRef.current === currentReq){
         setItems(res.map(x => ({ ...x, room: x.room || defaultRoom })));
       }
@@ -1488,6 +1498,7 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
     }
   };
 
+  const quota = checkAiQuota(uid);
   const edit=(i:number,k:string,v:string)=>setItems(items.map((x,n)=>n===i?{...x,[k]:v}:x));
 
   const commit=async()=>{
@@ -1549,6 +1560,16 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
   return <Modal onClose={onClose}>
     <h2><Sparkles/> Import timetable with AI</h2>
     <p className="muted">Only this selected timetable file is sent to Gemini. Review before anything is saved.</p>
+    {quota.isSharedKey && (
+      <div className={`ai-quota-pill ${quota.remaining === 0 ? 'exhausted' : ''}`} style={{ marginBottom: 14 }}>
+        <Sparkles size={14} />
+        <span>
+          {quota.remaining > 0
+            ? `${quota.remaining} of ${quota.max} free AI imports remaining this month`
+            : `Monthly free limit reached (${quota.max}/${quota.max} used). Resets ${quota.resetDate}.`}
+        </span>
+      </div>
+    )}
     {summary ? (
       <>
         <div className="success"><Check/> Import complete: {summary.imported} of {items.length} imported, {summary.skipped} skipped.</div>
@@ -1561,7 +1582,16 @@ function ImportModal({uid,subjects,table,defaultTarget,onSaved,onClose}:{uid:str
             <input type="text" placeholder="e.g. 215" value={defaultRoom} onChange={e=>setDefaultRoom(e.target.value)}/>
           </label>
         </div>
-        <label className="drop"><CloudUpload/><b>{file?file.name:'Upload timetable'}</b><span>PDF, PNG, JPG, JPEG or WEBP · max 15 MB</span><input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={e=>choose(e.target.files?.[0])}/></label>
+        {quota.isSharedKey && quota.remaining === 0 ? (
+          <div className="error" style={{ marginBottom: 16 }}>
+            <b>Monthly AI Limit Reached</b>
+            <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.4 }}>
+              You have used all {quota.max} free AI timetable imports for this month (resets {quota.resetDate}). To import more timetables now, please enter your personal Gemini API key in Settings.
+            </p>
+          </div>
+        ) : (
+          <label className="drop"><CloudUpload/><b>{file?file.name:'Upload timetable'}</b><span>PDF, PNG, JPG, JPEG or WEBP · max 15 MB</span><input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={e=>choose(e.target.files?.[0])}/></label>
+        )}
         {busy&&<div className="processing"><ThinkingOrb state="searching" size={20} aria-label="Working"/> Reading your timetable…</div>}
         {error&&<div className="error">{error}</div>}
         {items.length>0&&<>
@@ -1607,9 +1637,10 @@ function AttendanceImportModal({uid,subjects,records,defaultTarget,onCommitted,o
   const [groups,setGroups]=useState<SubjectGroup[]>([]),[overwrite,setOverwrite]=useState(false),[allowMultipleSameDay,setAllowMultipleSameDay]=useState(false),[includeUnreviewed,setIncludeUnreviewed]=useState(false),[showAll,setShowAll]=useState(false),[saved,setSaved]=useState({subjects:0,records:0,present:0,absent:0});
   const view=useMemo(()=>annotate(groups,records,allowMultipleSameDay),[groups,records,allowMultipleSameDay]);
   const sum=useMemo(()=>summarise(view,overwrite),[view,overwrite]);
+  const quota = checkAiQuota(uid);
   const read=async(f?:File)=>{
     if(!f)return; setFile(f); setError(''); setStage('analyzing');
-    try{ const parsed=await extractAttendance(f); setWarnings(parsed.warnings); setTruncated(parsed.truncated); setGroups(analyse(parsed,subjects)); setShowAll(false); setIncludeUnreviewed(false); setStage('review') }
+    try{ const parsed=await extractAttendance(f, uid); setWarnings(parsed.warnings); setTruncated(parsed.truncated); setGroups(analyse(parsed,subjects)); setShowAll(false); setIncludeUnreviewed(false); setStage('review') }
     catch(e){ setError(e instanceof Error?e.message:'We could not read that file. Please try again.'); setStage('upload') }
   };
   const setGroup=(key:string,patch:Partial<SubjectGroup>)=>setGroups(gs=>gs.map(g=>g.key===key?{...g,...patch}:g));
@@ -1639,11 +1670,30 @@ function AttendanceImportModal({uid,subjects,records,defaultTarget,onCommitted,o
   return <Modal onClose={onClose}>
     <h2><Sparkles/> Import attendance with AI</h2>
     <p className="muted">Gemini reads the .txt file you pick and works out its layout on its own. Nothing is saved until you confirm the review.</p>
+    {quota.isSharedKey && (
+      <div className={`ai-quota-pill ${quota.remaining === 0 ? 'exhausted' : ''}`} style={{ marginBottom: 14 }}>
+        <Sparkles size={14} />
+        <span>
+          {quota.remaining > 0
+            ? `${quota.remaining} of ${quota.max} free AI imports remaining this month`
+            : `Monthly free limit reached (${quota.max}/${quota.max} used). Resets ${quota.resetDate}.`}
+        </span>
+      </div>
+    )}
     <ol className="import-steps">{(['Upload','Analysing','Review','Importing','Complete'] as const).map((s,i)=>{const at=['upload','analyzing','review','importing','done'].indexOf(stage);return <li key={s} className={i===at?'at':i<at?'past':''}>{s}</li>})}</ol>
     {stage==='upload'&&<>
-      <label className="drop"><FileText/><b>{file?file.name:'Choose a .txt file'}</b><span>Plain text only · max 2 MB</span><input type="file" accept=".txt,text/plain" onChange={e=>read(e.target.files?.[0])}/></label>
+      {quota.isSharedKey && quota.remaining === 0 ? (
+        <div className="error" style={{ marginBottom: 16 }}>
+          <b>Monthly AI Limit Reached</b>
+          <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.4 }}>
+            You have used all {quota.max} free AI attendance imports for this month (resets {quota.resetDate}). To import more records now, please enter your personal Gemini API key in Settings.
+          </p>
+        </div>
+      ) : (
+        <label className="drop"><FileText/><b>{file?file.name:'Choose a .txt file'}</b><span>Plain text only · max 2 MB</span><input type="file" accept=".txt,text/plain" onChange={e=>read(e.target.files?.[0])}/></label>
+      )}
       {error&&<div className="error"><TriangleAlert/> {error}</div>}
-      {file&&error&&<button className="primary full" onClick={()=>read(file)}><RotateCcw/> Retry analysis</button>}
+      {file&&error&&quota.remaining > 0&&<button className="primary full" onClick={()=>read(file)}><RotateCcw/> Retry analysis</button>}
     </>}
     {stage==='analyzing'&&<div className="processing"><ThinkingOrb state="searching" size={20} aria-label="Working"/> Reading {file?.name} and matching it to your subjects…</div>}
     {stage==='importing'&&<div className="processing"><ThinkingOrb state="searching" size={20} aria-label="Working"/> Saving {sum.ready} records…</div>}

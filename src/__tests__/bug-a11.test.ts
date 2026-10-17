@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   GEMINI_MODEL,
+  DEFAULT_APK_GEMINI_KEY,
   classifyGeminiError,
   getGeminiApiKey,
   setGeminiApiKey,
@@ -23,11 +24,11 @@ describe('BUG-A11: Gemini model constant, API key management, and distinct error
   });
 
   it('allows user to get and set custom Gemini key in local storage', () => {
-    expect(getGeminiApiKey()).toBe(import.meta.env.VITE_GEMINI_API_KEY || '');
+    expect(getGeminiApiKey()).toBe(import.meta.env.VITE_GEMINI_API_KEY || DEFAULT_APK_GEMINI_KEY);
     setGeminiApiKey('custom-key-123');
     expect(getGeminiApiKey()).toBe('custom-key-123');
     setGeminiApiKey('');
-    expect(getGeminiApiKey()).toBe(import.meta.env.VITE_GEMINI_API_KEY || '');
+    expect(getGeminiApiKey()).toBe(import.meta.env.VITE_GEMINI_API_KEY || DEFAULT_APK_GEMINI_KEY);
   });
 
   it('classifies missing key error', () => {

@@ -54,12 +54,15 @@ if (typeof window !== 'undefined') {
   });
 }
 
-let testFirestore: Firestore | null = null;
-export function _setFirestoreForTesting(fs: Firestore | null) {
+let testFirestore: Firestore | null | undefined = undefined;
+export function _setFirestoreForTesting(fs: Firestore | null | undefined) {
   testFirestore = fs;
 }
 function getFirestoreInstance(): Firestore | undefined {
-  return testFirestore !== null ? testFirestore : firestore;
+  if (testFirestore !== undefined) {
+    return testFirestore || undefined;
+  }
+  return firestore;
 }
 
 function userDoc(fs: Firestore, uid: string) {

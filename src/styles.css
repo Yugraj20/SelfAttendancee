@@ -6263,3 +6263,35 @@ header.app-header {
   color: var(--brand);
 }
 
+/* ----------------------------------------------------
+   AI Quota Badge & Usage Limit Pill
+   ---------------------------------------------------- */
+.ai-quota-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(109, 93, 252, 0.1);
+  border: 1px solid rgba(109, 93, 252, 0.28);
+  color: #c3b9ff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  transition: all 0.2s ease;
+}
+
+.ai-quota-pill svg {
+  color: #8272fa;
+  flex-shrink: 0;
+}
+
+.ai-quota-pill.exhausted {
+  background: rgba(255, 141, 92, 0.12);
+  border-color: rgba(255, 141, 92, 0.4);
+  color: #ffb088;
+}
+
+.ai-quota-pill.exhausted svg {
+  color: #ff8d5c;
+}
+
