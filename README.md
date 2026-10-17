@@ -12,10 +12,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Capacitor](https://img.shields.io/badge/Capacitor-8-119EFF.svg?style=flat-square&logo=capacitor)](https://capacitorjs.com/)
 [![Firebase](https://img.shields.io/badge/Firebase-Auth%20%26%20Firestore-FFCA28.svg?style=flat-square&logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-yugraj20-FFDD00.svg?style=flat-square&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/yugraj20)
 
 <br />
 
-[**🌐 Open Web Application**](https://yugraj20.github.io) • [**📲 Download Android APK**](https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk) • [**📖 Documentation**](#-key-features) • [**⚡ Quick Start**](#-quick-start)
+[**🌐 Open Web Application**](https://yugraj20.github.io) • [**📲 Download Android APK**](https://github.com/Yugraj20/SelfAttendancee/releases/latest/download/SelfAttendance.apk) • [**☕ Buy Me a Coffee**](https://buymeacoffee.com/yugraj20) • [**📖 Documentation**](#-key-features) • [**⚡ Quick Start**](#-quick-start)
 
 <br />
 

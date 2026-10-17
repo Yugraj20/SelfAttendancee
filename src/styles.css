@@ -4853,6 +4853,80 @@ header.app-header {
   box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
 }
 
+/* Buy Me a Coffee Header Button */
+.bmac-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 13px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', Outfit, sans-serif;
+  letter-spacing: -0.01em;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  flex-shrink: 0;
+}
+
+:root[data-theme=dark] .bmac-header-btn,
+:root[data-theme=amoled] .bmac-header-btn {
+  background: rgba(255, 221, 0, 0.12);
+  border: 1px solid rgba(255, 221, 0, 0.35);
+  color: #FFDD00;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+:root[data-theme=dark] .bmac-header-btn:hover,
+:root[data-theme=amoled] .bmac-header-btn:hover {
+  background: #FFDD00;
+  border-color: #FFDD00;
+  color: #000000;
+  box-shadow: 0 6px 20px rgba(255, 221, 0, 0.45);
+  transform: translateY(-1px);
+}
+
+:root[data-theme=light] .bmac-header-btn {
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  color: #B45309;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
+}
+
+:root[data-theme=light] .bmac-header-btn:hover {
+  background: #F59E0B;
+  border-color: #F59E0B;
+  color: #FFFFFF;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
+  transform: translateY(-1px);
+}
+
+.bmac-icon {
+  flex-shrink: 0;
+  transition: transform 0.16s ease;
+}
+
+.bmac-header-btn:hover .bmac-icon {
+  transform: rotate(-10deg) scale(1.1);
+}
+
+@media (max-width: 640px) {
+  .bmac-header-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+  }
+
+  .bmac-text {
+    display: none;
+  }
+}
+
 /* Profile Avatar in Header */
 .avatar {
   display: grid;
