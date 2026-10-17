@@ -4,6 +4,8 @@ import type { StorageMode } from '../storage-mode';
 
 interface StorageChooserProps {
   onSelectMode: (mode: StorageMode) => void;
+  busy?: boolean;
+  error?: string;
 }
 
 function AppCalendarIcon() {
@@ -227,7 +229,7 @@ function GoogleBadgeIcon() {
   );
 }
 
-export function StorageChooser({ onSelectMode }: StorageChooserProps) {
+export function StorageChooser({ onSelectMode, busy = false, error = '' }: StorageChooserProps) {
   return (
     <div className="storage-chooser-screen">
       {/* Decorative soft background shapes */}
@@ -290,6 +292,7 @@ export function StorageChooser({ onSelectMode }: StorageChooserProps) {
             <button
               type="button"
               className="sc-btn sc-btn-local"
+              disabled={busy}
               onClick={() => onSelectMode('local')}
             >
               <span>Continue with Local Storage</span>
@@ -334,15 +337,37 @@ export function StorageChooser({ onSelectMode }: StorageChooserProps) {
                   <span>Never lose your data</span>
                 </li>
               </ul>
+
+              {error && (
+                <div
+                  role="alert"
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    marginBottom: 12,
+                    borderRadius: 10,
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    color: '#dc2626',
+                    fontSize: 12.5,
+                    lineHeight: 1.4,
+                    textAlign: 'left',
+                  }}
+                >
+                  {error}
+                </div>
+              )}
             </div>
 
             <button
               type="button"
               className="sc-btn sc-btn-cloud"
+              disabled={busy}
+              aria-busy={busy}
               onClick={() => onSelectMode('cloud')}
             >
               <GoogleBadgeIcon />
-              <span>Continue with Google</span>
+              <span>{busy ? 'Signing in…' : 'Continue with Google'}</span>
             </button>
           </article>
         </div>

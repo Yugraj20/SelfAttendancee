@@ -453,47 +453,46 @@ function AppContent() {
  };
  const saveEntry=async(e:TimetableEntry,newSubject?:Subject)=>{if(newSubject)await put('subjects',newSubject);await put('timetable',e);await reload();setModal(null);flash('Timetable saved')};
  const retryLoginSync=async()=>{if(!uid)return;setSyncFailed(false);setRestoring(true);const res=await syncOnLogin(uid,setSyncStatus);const d=await userData(uid);setSubjects(d.subjects);setRecords(d.attendance);setTable(d.timetable);setSettings(d.settings);setRestoring(false);setSyncFailed(res==='failed')};
+  const [authError, setAuthError] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+
   const handleSelectMode = async (mode: StorageMode) => {
-    await setStorageMode(mode);
-    setStorageModeState(mode);
+    setAuthError('');
     if (mode === 'local') {
+      await setStorageMode('local');
+      setStorageModeState('local');
       setUser(LOCAL_USER);
-    } else {
-      setUser(null);
+      return;
+    }
+    setAuthBusy(true);
+    setStorageModeState('cloud');
+    void setStorageMode('cloud');
+    try {
+      await signIn();
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : 'That sign-in did not go through. Check your connection and try again.');
+    } finally {
+      setAuthBusy(false);
     }
   };
 
-  const openSignInScreen = async () => {
-    await setStorageMode('cloud');
-    setStorageModeState('cloud');
-    setUser(null);
-  };
-
   const backToStorageChooser = async () => {
+    setAuthError('');
     await setStorageMode(null);
     setStorageModeState(null);
   };
 
   const switchToCloud = async () => {
-    if (!firebaseConfigured || !auth) {
-      await openSignInScreen();
-      return;
-    }
+    setAuthError('');
+    setAuthBusy(true);
     try {
       await signIn();
       await setStorageMode('cloud');
       setStorageModeState('cloud');
     } catch (e) {
-      const code = (e as { code?: string })?.code ?? '';
-      if (
-        code === 'auth/popup-blocked' ||
-        code === 'auth/operation-not-supported-in-this-environment' ||
-        code === 'auth/cancelled-popup-request'
-      ) {
-        await openSignInScreen();
-        return;
-      }
       flash(e instanceof Error ? e.message : 'Sign in failed');
+    } finally {
+      setAuthBusy(false);
     }
   };
 
@@ -541,7 +540,7 @@ function AppContent() {
 
  const stats=useMemo(()=>overall(subjects,records),[subjects,records]);
  const navigate=(p:Page)=>setPage(p);
- if (storageMode === null) return <StorageChooser onSelectMode={handleSelectMode} />;
+ if (storageMode === null) return <StorageChooser onSelectMode={handleSelectMode} busy={authBusy} error={authError} />;
  if(loading)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your attendance…</div>;
  if (conflictState) {
    return (
@@ -555,7 +554,7 @@ function AppContent() {
      </div>
    );
  }
- if(!user || (storageMode === 'cloud' && isLocalUid(user.uid))) return <Login onBack={() => { void setStorageMode(null); setStorageModeState(null); }} />;
+ if(!user || (storageMode === 'cloud' && isLocalUid(user.uid))) return <StorageChooser onSelectMode={handleSelectMode} busy={authBusy} error={authError} />;
   if(!settings)return <div className="center"><ThinkingOrb state="breathing" size={64} aria-label="Loading"/>Loading your settings…</div>;
   if(syncFailed&&!subjects.length&&!records.length){
     const r=getLastSyncErrorReason();
@@ -568,12 +567,12 @@ function AppContent() {
   }
  if(restoring)return <div className="center"><ThinkingOrb state="connecting" size={64} aria-label="Restoring"/>Syncing your attendance…</div>;
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
- return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={openSignInScreen}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={openSignInScreen}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
+ return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={switchToCloud}/></aside><main><header><div><p className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1></div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
  {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
  {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
  {page==='subjects'&&<SubjectsPage subjects={subjects} records={records} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onMark={mark}/>}
- {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} storageMode={storageMode} onSwitchToCloud={switchToCloud} onSwitchToLocal={switchToLocal} onOpenSignIn={openSignInScreen} onBackToStorageOptions={backToStorageChooser} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{const targetUid=uid||prevUid.current;if(typeof navigator!=='undefined'&&navigator.onLine&&targetUid){try{await Promise.race([flushPendingPush(targetUid),new Promise(r=>setTimeout(r,2000))])}catch{}}if(targetUid)cancelPendingPush(targetUid);cancelPendingPush();prevUid.current='';await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
+ {page==='calendar'&&<CalendarPage subjects={subjects} records={records} table={table} onMark={mark} onImport={()=>setModal('attendance-import')} onOpenMonthly={()=>navigate('statistics')}/>} {page==='timetable'&&<TimetablePage subjects={subjects} table={table} onEdit={e=>{setEditEntry(e);setModal('entry')}} onDelete={async e=>{if(confirm('Delete this class?')){await remove('timetable',e.id);await reload()}}} onImport={()=>setModal('import')}/>} {page==='statistics'&&<Statistics subjects={subjects} records={records} table={table} stats={stats} restoring={restoring} onExportExcel={()=>setModal('excel-export')}/>} {page==='settings'&&<SettingsPage user={user} settings={settings} subjects={subjects} records={records} table={table} syncStatus={syncStatus} storageMode={storageMode} onSwitchToCloud={switchToCloud} onSwitchToLocal={switchToLocal} onOpenSignIn={switchToCloud} onBackToStorageOptions={backToStorageChooser} onSettings={async s=>{await put('settings',s);setSettings(s);pushToCloud(uid,setSyncStatus)}} onBackup={()=>setModal('backup')} onRestore={()=>setModal('restore')} onImportAttendance={()=>setModal('attendance-import')} onClear={()=>setModal('clear')} onLogout={async()=>{const targetUid=uid||prevUid.current;if(typeof navigator!=='undefined'&&navigator.onLine&&targetUid){try{await Promise.race([flushPendingPush(targetUid),new Promise(r=>setTimeout(r,2000))])}catch{}}if(targetUid)cancelPendingPush(targetUid);cancelPendingPush();prevUid.current='';await logout();setSubjects([]);setRecords([]);setTable([]);setSettings(null);setSyncStatus('idle');setPage('home')}}/>}
  </main><FloatingNav activeKey={page} onNavigate={navigate}/><button className="fab-today" onClick={()=>{setJumpToday(true);navigate('home')}} aria-label="Go to today's classes"><Clock3/><span>Today</span></button><div className={`toast t-toast${toast?' is-open':''}`} role="status" aria-live="polite"><span>{shownToast.current}</span>{shownUndo.current&&<button className="toast-undo" onClick={undoMark}>Undo</button>}</div>
  {modal==='subject'&&editSubject&&<SubjectForm subject={editSubject} onSave={saveSubject} onDelete={editSubject.name?deleteSubject:undefined} onClose={()=>setModal(null)}/>} {modal==='entry'&&editEntry&&<EntryForm entry={editEntry} subjects={subjects} onSave={saveEntry} onClose={()=>setModal(null)}/>} {modal==='import'&&<ImportModal uid={uid} subjects={subjects} table={table} defaultTarget={settings?.defaultTarget??75} onSaved={async()=>{await reload();setModal(null);flash('Timetable imported')}} onClose={()=>setModal(null)}/>} {modal==='attendance-import'&&<AttendanceImportModal uid={uid} subjects={subjects} records={records} defaultTarget={settings?.defaultTarget??75} onCommitted={reload} onDone={(n:number)=>{setModal(null);flash(`${n} attendance records imported`)}} onClose={()=>setModal(null)}/>} {modal==='backup'&&<BackupModal data={{version:1,createdAt:new Date().toISOString(),account:{email:user.email??'',uid},subjects,attendance:records,timetable:table,settings:settings}} onClose={()=>setModal(null)}/>} {modal==='restore'&&<RestoreModal uid={uid} onDone={async()=>{await reload();setModal(null);flash('Backup restored')}} onClose={()=>setModal(null)}/>} {modal==='clear'&&<Modal onClose={()=>setModal(null)}><h2>Clear local data?</h2><p>{storageMode === 'local' ? 'This removes all attendance, subjects and timetable stored on this device.' : 'This removes attendance, subjects and timetable for this account from this device. Because you are signed in, your cloud copy will be restored immediately to keep your sync state consistent.'}</p>
  <button className="danger full" onClick={async()=>{await clearUser(uid);if(user && !isLocalUid(user.uid)){await syncOnLogin(user.uid,setSyncStatus);}await reload(storageMode === 'cloud');setModal(null);flash(storageMode === 'cloud'?'Local data cleared and cloud copy restored':'Local data cleared')}}>{storageMode === 'local' ? 'Clear local data' : 'Clear and restore from cloud'}</button></Modal>}
@@ -603,55 +602,6 @@ function SyncBadge({status, mode, onSignIn}:{status:SyncStatus, mode?: StorageMo
   const errorLabel=reason==='payload_too_large'?'Limit exceeded (>1MB)':'Sync paused — retrying';
   const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:errorLabel}[status];
   return <span className={`sync-badge ${status}`} title={reason==='payload_too_large'?"Data exceeds Firestore's 1MB limit. Export or remove older records.":undefined}>{status==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>
-}
-const HEADLINE='Know exactly how many classes you can miss.';
-// The sign-in screen loads before lucide-react would be worth pulling in, so its few icons are
-// inline. Everything shares one stroked 24px box.
-function Stroke({children,width=2}:{children:React.ReactNode,width?:number}){return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>}
-function GoogleMark(){return <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/><path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/><path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/></svg>}
-function Login({onBack}:{onBack?:()=>void}){
-  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
-  const surface=useRef<HTMLDivElement>(null);
-  // Pointer position feeds the ambient spotlight through CSS custom properties, so the effect
-  // costs one style write per move instead of a React render.
-  const track=(e:React.PointerEvent<HTMLDivElement>)=>{const el=surface.current;if(!el||e.pointerType!=='mouse')return;const r=el.getBoundingClientRect();el.style.setProperty('--mx',`${((e.clientX-r.left)/r.width*100).toFixed(1)}%`);el.style.setProperty('--my',`${((e.clientY-r.top)/r.height*100).toFixed(1)}%`)};
-  const go=async()=>{setBusy(true);setError('');try{await signIn()}catch(e){setError(e instanceof Error?e.message:'That sign-in did not go through. Check your connection and try again.')}finally{setBusy(false)}};
-  return <div className="login login-screen-fixed" ref={surface} onPointerMove={track}>
-    <div className="login-glow" aria-hidden="true"><i/><i/><i/></div>
-    <div className="login-shell">
-      <header className="login-head">
-        <div className="login-brand">
-          <span className="login-mark"><Stroke width={3.2}><path d="M20 6 9 17l-5-5"/></Stroke></span>
-          <span><b>Self Attendance</b><small>Smart class and bunk engine</small></span>
-        </div>
-        {onBack&&<button className="text" onClick={onBack} style={{fontSize:13,display:'inline-flex',alignItems:'center',gap:4}}>← Back to options</button>}
-      </header>
-      <div className="login-grid">
-        <section className="login-lead">
-          <h1>{HEADLINE.split(' ').map((w,i)=><span key={i} style={{'--i':i} as CSSProperties}>{w}</span>)}</h1>
-          <p>One tap marks a class. Self Attendance works out the percentages and tells you how many lectures you can still skip before the shortage list does.</p>
-        </section>
-
-        <div className="login-side">
-          <section className="login-panel">
-            <small><Stroke><path d="M12 13v8"/><path d="m8 17 4-4 4 4"/><path d="M20 16.6A5 5 0 0 0 18 7h-1.3A8 8 0 1 0 4 15.2"/></Stroke>Backup and sync</small>
-            <h2>Sign in to carry your semester across devices</h2>
-            <p>Your attendance lives on this device, so the app is instant and works offline. Signing in keeps a private copy, so the same term shows up on your phone and your laptop.</p>
-            {!firebaseConfigured&&<div className="login-msg setup">Firebase needs configuration. Copy <code>.env.example</code> to <code>.env.local</code> and add your web app values.</div>}
-            {error&&<div className="login-msg">{error}</div>}
-            <button className="google" onClick={go} disabled={busy} aria-busy={busy}>{busy?<ThinkingOrb state="working" size={20} theme="light" aria-label="Signing in"/>:<GoogleMark/>}{busy?'Signing in…':'Continue with Google'}</button>
-            <div className="login-vault">
-              <Stroke><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></Stroke>
-              <div>
-                <b>Google shares your name, email and photo</b>
-                <p>Nothing else. Your subjects, timetable and attendance stay in a record only your account can open.</p>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  </div>
 }
 export function Profile({user, storageMode, onSignIn}:{user:AuthUser, storageMode?: StorageMode | null, onSignIn?: () => void}){
   return (
