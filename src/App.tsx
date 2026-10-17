@@ -569,7 +569,7 @@ function AppContent() {
  const nav=[['home',Home,'Home'],['subjects',BookOpen,'Subjects'],['calendar',CalendarDays,'Calendar'],['timetable',Clock3,'Timetable'],['statistics',BarChart3,'Reports'],['settings',SettingsIcon,'Settings']] as const;
  return <div className="app"><aside><Brand/><nav>{nav.map(([p,I,l])=><button key={p} className={page===p?'active':''} onClick={()=>navigate(p)}><I/><span>{l}</span></button>)}</nav><Profile user={user} storageMode={storageMode} onSignIn={switchToCloud}/></aside><main className={`page-${page}`}>
  {page==='home'&&<div className="dashboard-atmosphere" aria-hidden="true">
-   <img src={`${import.meta.env.BASE_URL}header-sunset.jpg`} alt="" className="atmo-bg-image" />
+   <div className="atmo-aurora" />
    <div className="atmo-overlay" />
  </div>}
  <header className="app-header"><div className="header-welcome"><p className="eyebrow">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1>{page==='home'&&<p className="header-subtitle">Keep showing up <span className="sparkle-icon" aria-hidden="true">✨</span></p>}</div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
@@ -779,8 +779,7 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
       {/* 3. Today's Rhythm Card */}
       <article className="card today luxury-rhythm">
         <div className="rhythm-classroom-art" aria-hidden="true">
-          <img src={`${import.meta.env.BASE_URL}rhythm-classroom.jpg`} alt="" className="rhythm-bg-image" />
-          <div className="rhythm-bg-fade" />
+          <div className="rhythm-ambient-glow" />
         </div>
 
         <div className="rhythm-top-row">
