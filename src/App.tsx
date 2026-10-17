@@ -572,7 +572,7 @@ function AppContent() {
    <div className="atmo-aurora" />
    <div className="atmo-overlay" />
  </div>}
- <header className="app-header"><div className="header-welcome"><p className="eyebrow">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1>{page==='home'&&<p className="header-subtitle">Keep showing up <span className="sparkle-icon" aria-hidden="true">✨</span></p>}</div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings">{user.photoURL?<img src={user.photoURL} alt=""/>:<span>{(user.displayName||user.email||'?')[0].toUpperCase()}</span>}</button></div></header>
+ <header className="app-header"><div className="header-welcome"><p className="eyebrow">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{page==='home'?'Good to see you':page==='statistics'?'Reports & Analytics':page==='subjects'?'Subjects':page[0].toUpperCase()+page.slice(1)}</h1>{page==='home'&&<p className="header-subtitle">Keep showing up <span className="sparkle-icon" aria-hidden="true">✨</span></p>}</div><div className="header-actions"><SyncBadge status={syncStatus} mode={storageMode} onSignIn={switchToCloud}/><button className="avatar" onClick={()=>navigate('settings')} aria-label="Settings"><UserAvatar user={user} alt="" showFallback/></button></div></header>
  {getLastSyncErrorReason()==='payload_too_large'&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',padding:'12px 16px'}}><b>Cloud sync paused: 1 MB limit exceeded</b><p className="muted" style={{margin:'4px 0 0',fontSize:13}}>Your attendance records exceed Firestore's 1 MiB document limit. Export your data to Excel or JSON and delete older records to resume cloud sync.</p></div>}
  {quarantineNotice&&quarantineNotice.totalQuarantined>0&&<div className="card" style={{margin:'0 0 16px',border:'1px solid var(--absent,#ff5c5c)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'12px 16px'}}><div><b>{quarantineNotice.totalQuarantined} items could not be restored</b><p className="muted" style={{margin:0,fontSize:13}}>Some records from your cloud copy were malformed and were safely skipped.</p></div><div style={{display:'flex',gap:8}}><button className="secondary" onClick={()=>{const b=new Blob([JSON.stringify(quarantineNotice.quarantined,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`skipped-records-${dateISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}}><Download size={14}/> Download skipped</button><button className="icon" onClick={()=>setQuarantineNotice(null)} aria-label="Dismiss"><X size={16}/></button></div></div>}
  {page==='home'&&<Dashboard subjects={subjects} records={records} table={table} stats={stats} defaultTarget={settings?.defaultTarget??75} restoring={restoring} onMark={mark} onAdd={()=>{setEditSubject(initialSubject(uid,settings?.defaultTarget??75));setModal('subject')}} onEdit={s=>{setEditSubject(s);setModal('subject')}} onNav={navigate}/>} 
@@ -608,10 +608,26 @@ function SyncBadge({status, mode, onSignIn}:{status:SyncStatus, mode?: StorageMo
   const label={syncing:'Syncing…',synced:'Synced',offline:'Offline — will sync later',error:errorLabel}[effectiveStatus];
   return <span className={`sync-badge ${effectiveStatus}`} title={reason==='payload_too_large'?"Data exceeds Firestore's 1MB limit. Export or remove older records.":undefined}>{effectiveStatus==='syncing'?<ThinkingOrb state="connecting" size={20} aria-label="Syncing"/>:<i className="dot"/>}{label}</span>
 }
+export function UserAvatar({user, alt, showFallback = false}:{user:AuthUser, alt?:string, showFallback?:boolean}){
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const src = user.photoURL;
+  if (src && failedSrc !== src) {
+    return (
+      <img
+        src={src}
+        alt={alt ?? (user.displayName || 'Profile')}
+        referrerPolicy="no-referrer"
+        onError={() => setFailedSrc(src)}
+      />
+    );
+  }
+  if (!showFallback) return null;
+  return <span className="avatar-initial">{(user.displayName || user.email || '?')[0].toUpperCase()}</span>;
+}
 export function Profile({user, storageMode, onSignIn}:{user:AuthUser, storageMode?: StorageMode | null, onSignIn?: () => void}){
   return (
     <div className="profile">
-      {user.photoURL?<img src={user.photoURL} alt={user.displayName||'Profile'}/>:null}
+      <UserAvatar user={user} alt={user.displayName||'Profile'}/>
       <div style={{flex:1,minWidth:0}}>
         <b>{user.displayName}</b>
         <small>{storageMode === 'local' ? 'Stored on this device' : user.email}</small>
@@ -1172,7 +1188,7 @@ export function SettingsPage({
   return <div className="settings">
     {storageMode === 'cloud' ? (
       <section className="card account">
-        {user.photoURL ? <img src={user.photoURL} alt={user.displayName || 'Profile'}/> : null}
+        <UserAvatar user={user} alt={user.displayName || 'Profile'} showFallback/>
         <div><h2>{user.displayName}</h2><p>{user.email}</p><SyncBadge status={syncStatus} mode="cloud"/></div>
         <button onClick={onLogout}><LogOut/> Logout</button>
       </section>

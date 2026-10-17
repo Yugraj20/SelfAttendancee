@@ -5676,3 +5676,16 @@ header.app-header {
     height: 102px;
   }
 }
+
+.account .avatar-initial {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #6366F1, #10B981);
+  color: #FFFFFF;
+  font-size: 20px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
