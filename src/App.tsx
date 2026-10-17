@@ -761,7 +761,6 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
             <CalendarDays size={20} />
           </span>
           <b className="qa-title">Timetable</b>
-          <small className="qa-desc">View schedule</small>
         </button>
 
         <button type="button" className="qa-card qa-amber" onClick={() => onNav('subjects')}>
@@ -772,7 +771,6 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
             </svg>
           </span>
           <b className="qa-title">Subjects</b>
-          <small className="qa-desc">Manage subjects</small>
         </button>
 
         <button type="button" className="qa-card qa-emerald" onClick={() => onNav('statistics')}>
@@ -780,7 +778,6 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
             <BarChart3 size={20} />
           </span>
           <b className="qa-title">Reports</b>
-          <small className="qa-desc">Detailed insights</small>
         </button>
 
         <button type="button" className="qa-card qa-rose" onClick={() => onNav('calendar')}>
@@ -788,7 +785,6 @@ function Dashboard({subjects,records,table,stats,defaultTarget=75,restoring,onMa
             <CalendarDays size={20} />
           </span>
           <b className="qa-title">Calendar</b>
-          <small className="qa-desc">Monthly view</small>
         </button>
       </section>
 

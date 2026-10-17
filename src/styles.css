@@ -4975,11 +4975,12 @@ header.app-header {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 14px 12px 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 10px;
   border-radius: 20px;
-  text-align: left;
+  text-align: center;
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
@@ -5048,7 +5049,7 @@ header.app-header {
   color: var(--qa-icon-color);
   display: grid;
   place-items: center;
-  margin-bottom: 10px;
+  margin: 0 auto;
 }
 
 .qa-title {
@@ -5057,17 +5058,7 @@ header.app-header {
   font-weight: 700;
   color: var(--ink);
   line-height: 1.2;
-}
-
-.qa-desc {
-  font-size: 10.5px;
-  color: var(--muted);
-  margin-top: 2px;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
+  text-align: center;
 }
 
 /* ---- 3. Today's Rhythm Bento Card ---- */
@@ -5654,21 +5645,18 @@ header.app-header {
     gap: 8px;
   }
   .qa-card {
-    padding: 11px 8px 10px;
+    padding: 12px 8px;
     border-radius: 17px;
+    gap: 7px;
   }
   .qa-icon-box {
     width: 34px;
     height: 34px;
     border-radius: 10px;
-    margin-bottom: 8px;
+    margin: 0 auto;
   }
   .qa-title {
     font-size: 12px;
-  }
-  .qa-desc {
-    font-size: 9.5px;
-    letter-spacing: -0.01em;
   }
   .ring.luxury-ring,
   .ring-svg {
